@@ -1,0 +1,36 @@
+setwd('/projectnb2/dmfgrp/Laplacian_EFM')
+
+library(efm)
+if (!require("R.matlab")) install.packages("R.matlab")
+if (!require("snedata")) install.packages("snedata")
+if (!require("MASS")) install.packages("MASS")
+
+# [ORL Face]
+data_dir = '/projectnb/dmfgrp/Exponential_Factor_Model/data'
+ORL_datadir = paste(data_dir, '/ORL_64x64.mat', sep ='')
+X<- readMat(ORL_datadir)$fea
+label = readMat(ORL_datadir)$gnd
+batch_size = 128
+q = 7
+# [Fashion]
+# fashion <- download_fashion_mnist()
+# # first 60,000 instances are the training set
+# X <- as.matrix(fashion[1:10000, -c(785,786)])
+# label = fashion[1:10000, 786]
+# batch_size = 512
+# q = 3
+
+
+n = dim(X)[1]
+p = dim(X)[2]
+phi_star = mean(X)^2/(sd(X)^2 - mean(X))
+factor_family = negative.binomial(phi_star)
+glm_weights = 1
+
+adam_control = adam.control(max_epoch = 10, batch_size = batch_size,
+                            step_size = 0.1, rho =0.9, abs_tol = 1e-6,
+                            beta1 = 0.9, beta2 = 0.999, epislon = 10 ^ -8)
+sample_control = sample.control(sample_size = 500, eval_size = 500)
+
+efm_fit = efm(X, factor_family = factor_family, rank = q, glm_weights, algo = 'lapl',
+  adam_control = adam_control, sample_control = sample_control, eval_likeli = TRUE)

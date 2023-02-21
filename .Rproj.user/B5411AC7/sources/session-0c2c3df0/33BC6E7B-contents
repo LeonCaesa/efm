@@ -1,0 +1,597 @@
+library(mvtnorm)
+library(MASS)
+library(matrixStats)
+
+norm2 <- function (x) norm(as.matrix(x[!is.na(x)]), "2")
+normalize <- function (x, margin = 2)
+  sweep(x, margin, apply(x, margin, norm2), `/`)
+
+generate_Y <- function (glm_family, eta_star,  dispersion = 1, glm_weights = 1) {
+  y_len <- prod(dim(eta_star))
+  mu <- glm_family$linkinv(eta_star)
+  family <- glm_family$family
+  if (grepl("Negative Binomial", family)) family <- "negative.binomial"
+  y <- switch(family,
+              gaussian = rnorm(y_len, mu, sqrt( dispersion)),
+              poisson = rpois(y_len, mu),
+              binomial = rbinom(y_len, glm_weights, mu),
+              Gamma = rgamma(y_len ,shape =  dispersion, scale = mu /  dispersion),
+              negative.binomial = rnegbin(y_len, mu = mu, theta =  dispersion),
+              stop("family `", glm_family$family, "` not recognized"))
+  dim(y) <- dim(eta_star)
+  y
+}
+
+
+pdf_calc <- function(glm_family, glm_weights,  dispersion=1, log_ = FALSE){
+  if (glm_family$family =="gaussian"){
+    return (function(x, mu, glm_weights) glm_weights * dnorm(x, mu,  dispersion, log= log_))
+  }
+  else if(glm_family$family =='poisson'){
+    return (function(x, mu, glm_weights) glm_weights *  dpois(x, mu, log= log_))
+  }
+  else if (glm_family$family =='binomial'){
+    return (function(x, mu, glm_weights) glm_weights * dbinom(x * glm_weights, glm_weights, mu, log= log_))
+  }
+  else if (grepl('^Negative Binomial', glm_family$family)){
+    return (function(x, mu, glm_weights) glm_weights*  dnbinom(x,  dispersion, mu = mu, log= log_))
+  }
+  else if (glm_family$family =='Gamma'){
+    return (function(x, mu, glm_weights) glm_weights *  dgamma(x, shape =  dispersion, scale = mu/dispersion, log= log_))
+  }
+}
+
+
+
+gsym_solve <- function (A, b, tol = sqrt(.Machine$double.eps)) {
+  ea <- eigen(A, symmetric = TRUE)
+  V <- ea$vectors; d <- ea$values
+  valid <- d > max(tol * d[1], 0)
+  if (!all(valid)) {
+    V <- V[, valid, drop = FALSE]; d <- d[valid]
+  }
+  V %*% sweep(crossprod(V, b), 1, d, `/`)
+}
+
+family_initialize <- function (x, weights, family = gaussian()) {
+  nr <- nrow(x); nc <- ncol(x)
+  mustart <- NULL
+  y <- c(x); nobs <- length(y) #; weights <- rep(1, nobs)
+  eval(family$initialize)
+  matrix(mustart, nrow = nr, ncol = nc)
+}
+
+batch_mle <- function(X_batch, Vt, factor_family, q, weights = 1){
+  n_sub = dim(X_batch)[1]
+  mu <- family_initialize(X_batch, weights = weights, factor_family)
+  eta <- factor_family$linkfun(mu)
+  L_mle <- eta[, 1:q, drop = FALSE]
+  mu_eta <- matrix(factor_family$mu.eta(eta), ncol = d)
+  var <- matrix(factor_family$variance(mu), ncol = d)
+  is_inf_mu <- is.infinite(mu)
+  S <- mu_eta  / var * mu_eta * weights
+  S[is_inf_mu] <- 0
+  Z <- eta + (X_batch - mu) / mu_eta # working residuals
+  Z[is_inf_mu] <- eta[is_inf_mu]
+  for (i in 1:n_sub) {
+    si <- sqrt(S[i, ]); Vi <- sweep(Vt, 1, si, `*`)[ , , drop = FALSE]
+    L_mle[i, ] <- gsym_solve(crossprod(Vi), crossprod(Vi, (Z[i, ] * si)))
+  }
+  return(L_mle)
+}
+
+
+comput_mupos = function(L_row, Vt, factor_family, scale_weights = 1) {
+  q = dim(Vt)[2]
+  d = dim(Vt)[1]
+  Weight_row = tcrossprod(L_row, Vt)
+  mu_hat = c(factor_family$linkinv(Weight_row))
+  
+  diag_term = diag(scale_weights * factor_family$variance(mu_hat), nrow = d)
+  hessian = tcrossprod(crossprod(Vt, diag_term), t(Vt))
+  mu_pos = crossprod(ginv(ginv(hessian) + diag(1, nrow= q)), L_row)
+  return( mu_pos)
+}
+
+
+comput_CholSigma = function(L_row, Vt, factor_family, scale_weights = 1){
+  q = dim(Vt)[2] 
+  d = dim(Vt)[1]
+  mu_hat = c(factor_family$linkinv(tcrossprod(L_row, Vt)))
+  diag_term = diag(scale_weights * factor_family$variance(mu_hat), nrow = d)
+  hessian = tcrossprod(crossprod(Vt, diag_term), t(Vt))
+  Sigma_pos = ginv(diag(1, nrow= q) + hessian) + diag(1e-08, nrow = q)
+  Sigma_chol = chol(Sigma_pos)
+  return(Sigma_chol)
+}
+
+simu_pos = function(mu_pos, CholSigma, sample_size = 1){
+  q = length(mu_pos)
+  simu_temp = tcrossprod(CholSigma, matrix(rnorm(sample_size * q), nrow = sample_size))
+  return( sweep(simu_temp, 1, mu_pos, '+') )  
+}
+
+SML_neglikeli <- function(Vt, factor_family, X, q, sample_size, dispersion=1, glm_weights = 1, print_likeli= TRUE){
+  n <- dim(X)[1]
+  d <- dim(X)[2]
+  Vt <- matrix(Vt, nrow = d, ncol =q)
+  likeli_simu  <- matrix(0, nrow = n, ncol = sample_size)
+  family_pdf <- pdf_calc(factor_family, glm_weights = glm_weights, dispersion = dispersion, log_ = TRUE)
+  
+  for (b in 1:sample_size){
+    L_sample <-  matrix(rnorm(n * q), nrow = n)
+    eta_simu <- tcrossprod(L_sample, Vt)
+    mu_simu <- factor_family$linkinv(eta_simu)
+    likeli_simu [,b] <- rowSums(family_pdf(X,
+                                        mu = mu_simu,
+                                        glm_weights = glm_weights ))
+  }
+  neg_likeli = -sum(rowLogSumExps(likeli_simu )- log(sample_size))
+  # print(neg_likeli)
+  if(print_likeli){print(neg_likeli)}
+  return(neg_likeli)
+}
+
+SML_grad <- function(Vt, factor_family, X, q, sample_size, dispersion = 1, glm_weights = 1){
+  n <- dim(X)[1]
+  d <- dim(X)[2]
+  Vt <- matrix(Vt, nrow= d, ncol =q)
+  family_pdf = pdf_calc(factor_family, glm_weights = glm_weights, dispersion = dispersion, log_ = TRUE)
+  
+  likeli_simu <- array(dim = c(n, d, sample_size))
+  grad_simu <- array(dim = c(n, d, q, sample_size))
+  for (b in 1:sample_size){
+    L_sample <-  matrix(rnorm(n * q), nrow = n)
+    eta_simu <- tcrossprod(L_sample, Vt)
+    mu_simu <- factor_family$linkinv(eta_simu)
+    variance_simu <- factor_family$variance(mu_simu)
+    mueta_simu <- factor_family$mu.eta(eta_simu)
+    grad_scale = 1/dispersion * (mu_simu- X) * glm_weights * mueta_simu/variance_simu# to do: check glm_weight multiply
+    for( j in 1:d){
+      for(l in 1:q){
+        grad_simu[,j, l, b]= grad_scale[,j] * L_sample[,l]}  # end of q iter
+    }  # end of d iter
+    likeli_simu[,,b] <- family_pdf(X, mu = mu_simu, glm_weights = glm_weights)
+  } # end of sample iter
+  mc_likeli = exp(apply(likeli_simu, c(1, 2), logSumExp))/sample_size
+  mc_likeli = replicate(q, mc_likeli)
+  mc_grad = apply(grad_simu, c(1,2,3), mean)
+  
+  total_grad = apply(mc_grad/mc_likeli, c(2,3), sum)
+  #to avoid numerical issue of dividing a small probability
+  total_grad[is.na(total_grad)] = 0
+  # total_grad[is.infinite(total_grad)] = 1e8
+  return( t(total_grad))
+}
+
+efm_sign <- function (V) {
+  s <- sign(V[1, ])
+  return(V <- sweep(V, 2, s, `*`))
+}
+
+
+ridge_coef <- function(X_vec, weight_vec, Vt, factor_family){
+  d = dim(Vt)[1]
+  sd_scalar = sqrt(var(X_vec)*(d-1)/d)
+  pen_result <- glmnet(x = Vt, y= X_vec, family = factor_family, alpha = 0, lambda=1, weights = weight_vec,
+                      intercept = FALSE, standardize = FALSE, thresh= 1e-20,
+                       type.logistic = c("Newton"))
+  as.vector(coef(pen_result, s = sd_scalar * 1/d, exact = TRUE, x = Vt, y = X_vec, weights = weight_vec))[-1]
+}
+
+Lapl_grad <- function(X_batch, Vt, factor_family, glm_weights, dispersion, q= dim(Vt)[2] ){
+      n <- dim(X_batch)[1]
+      d <- dim(X_batch)[2]
+      Vt <- matrix(Vt, nrow= d, ncol =q)
+      
+      
+      L_mle = t(mapply(ridge_coef, X_vec = asplit(X_batch, 1),  
+                       weight_vec = asplit(glm_weights, 1),  
+                       MoreArgs = list(Vt = Vt, factor_family = factor_family)))
+      
+      eta_mle = tcrossprod(L_mle, Vt)
+      mu_mle = factor_family$linkinv(eta_mle)  
+      g = factor_family$mu.eta(eta_mle); dim(g) = dim(eta_mle)
+      v = factor_family$variance(mu_mle); dim(v) = dim(eta_mle)
+      scales = (mu_mle - X_batch) * glm_weights * g/v # to do: confirm the weights
+      grad = 1/ dispersion * t(crossprod(scales, L_mle))
+      return(grad)
+}
+
+
+FastGaussian_grad <- function(X_batch, Vt, factor_family, dispersion, glm_weights,  q= dim(Vt)[2]){
+      n <- dim(X)[1]
+      d <- dim(X)[2]
+      Vt <- matrix(Vt, nrow= d, ncol =q)
+      
+      q = dim(Vt)[2]
+      d = dim(Vt)[1]
+      L_mle = batch_mle(X_batch, Vt, factor_family, q)
+      LX_matrix = cbind(L_mle, X_batch)
+      grad = apply(LX_matrix, 1, FastGaussian_GradRow, Vt =Vt, 
+                   factor_family = factor_family, dispersion = dispersion,
+                   glm_weights = glm_weights)
+      grad = matrix(rowSums(grad), ncol =d)
+}
+
+PosSample_Moments <-function(LX_row, Vt, factor_family, dispersion, glm_weights){
+  d = dim(Vt)[1]
+  q = dim(Vt)[2]
+  L_row = matrix(LX_row[1:q], nrow = 1)
+  X_row = matrix(LX_row[-c(1:q)], nrow = 1)
+  eta_row = tcrossprod(L_row, Vt)
+  mu_row =  factor_family$linkinv(eta_row)
+  var_row = factor_family$variance(mu_row)
+  
+  var_row = sweep(var_row, 2, glm_weights , '*')
+  hessian_L = 1/dispersion * crossprod(sweep(Vt, 1, var_row, "*"), Vt)
+  
+  L_pos = matrix(tcrossprod(ginv(ginv(hessian_L) + diag(1, nrow= q)), L_row), ncol=1)
+  Sigma_pos = ginv(diag(1, nrow= q) + hessian_L) + diag(1e-08, nrow = q)
+  
+  return(list(L_pos = L_pos, Sigma_pos = Sigma_pos))
+}
+
+PosSample_GradRow <- function(L_row, X_row, weight_row, Vt, factor_family, dispersion, sample_size){
+  
+    d = dim(Vt)[1]
+    q = dim(Vt)[2]
+    #X_row = matrix(LX_row[-c(1:q)], nrow = 1)
+    LX_row = cbind(L_row, X_row)
+    Pos_moments <- PosSample_Moments(LX_row, Vt, factor_family, dispersion, weight_row)
+    L_sample <- PosSample_Draw(Pos_moments, sample_size)
+  
+    eta_pos = tcrossprod(L_sample, Vt)
+    mu_pos = factor_family$linkinv(eta_pos)
+    var_pos = factor_family$variance(mu_pos)
+    mueta_pos = factor_family$mu.eta(eta_pos)
+    
+    
+    scales = sweep(mu_pos, 2, X_row, '-')
+    scales = scales * mueta_pos/var_pos
+    scales = sweep(scales, 2, weight_row, '*') # [todo: examine glm weights]
+    grad_return = 1/dispersion * crossprod(L_sample, scales)/sample_size
+    return( c(grad_return))
+}
+
+PosSample_Draw <- function(Pos_moments, sample_size){
+  L_pos = Pos_moments$L_pos
+  Sigma_chol = chol(Pos_moments$Sigma_pos)
+  
+  sd_normal = matrix(rnorm(sample_size * q), nrow = sample_size)
+  L_sample = t(tcrossprod(Sigma_chol, sd_normal))
+  L_sample = sweep(L_sample, 2, L_pos,'+')
+  return(L_sample)
+}
+
+# [Computing Laplacian sampling parameters --- for debuging purpose]
+# set.seed(1)
+# batch_size = 64
+# X_batch = X[1:batch_size,]
+# L_mle = batch_mle(X_batch, Vt, factor_family, q)
+# LX_matrix = cbind(L_mle, X_batch)
+# sample_size = 1000
+# Weight_matrix = cbind(Weight_row = tcrossprod(L_mle, Vt), L_row = L_mle) # for non-gaussian
+# rmv_norm = function(Weight_row) {
+#   L_row = matrix(Weight_row[(d+1):(d+q)], nrow= 1)
+#   Weight_row = Weight_row[1:d]
+#   mu_hat = factor_family$linkinv(Weight_row)
+#   diag_term = diag( factor_family$variance(mu_hat), nrow = d)
+#   hessian = tcrossprod(crossprod(Vt, diag_term), t(Vt))
+#   Sigma_pos = ginv(diag(1, nrow= q) + hessian) + diag(1e-08, nrow = q)
+#   Sigma_chol = chol(Sigma_pos)
+#   mu_pos = tcrossprod(ginv(ginv(hessian) + diag(1, nrow= q)), L_row)
+#   return(mu_pos + tcrossprod(Sigma_chol, matrix(rnorm(1 * q), nrow = 1)))
+# }
+# 
+# grad = matrix(0, nrow = q, ncol =d)
+# for (b in 1:sample_size){
+#   L_sample = t(matrix(apply(Weight_matrix, 1,rmv_norm), ncol = batch_size))
+#   eta_sample = tcrossprod(L_sample, Vt)
+#   mu_sample = factor_family$linkinv(eta_sample)
+#   grad = grad + (crossprod(L_sample, mu_sample - X_batch))
+# }
+# grad_check2 = grad/sample_size
+# 
+# set.seed(1)
+# grad_check1 <- PosSample_grad(X_batch, Vt, factor_family, dispersion, glm_weights, sample_size = sample_size)
+# 
+# set.seed(1)
+# grad_check3 = SML_grad( X = X_batch, factor_family = factor_family, Vt = Vt, q = q, sample_size = sample_size, dispersion = dispersion, glm_weights = glm_weights)
+# grad_check3/sample_size
+
+
+PosSample_grad <-function(X_batch, Vt, factor_family, dispersion, glm_weights, 
+                          sample_size = sample_size, q= dim(Vt)[2]){
+  
+  n <- dim(X)[1]
+  d <- dim(X)[2]
+  q = dim(Vt)[2]
+  Vt <- matrix(Vt, nrow= d, ncol =q)
+
+  
+  L_mle = batch_mle(X_batch, Vt, factor_family, q, glm_weights)  
+  
+  
+  #LX_matrix = cbind(L_mle, X_batch)
+  
+  grad = mapply(PosSample_GradRow, 
+                L_row = asplit(L_mle, 1), 
+                X_row = asplit(X_batch, 1),
+                weight_row = asplit(glm_weights, 1),
+                MoreArgs = list(Vt = Vt, factor_family = factor_family, dispersion = dispersion, sample_size = sample_size))
+    # grad = apply(LX_matrix, 1, PosSample_GradRow, Vt =Vt, 
+  #              factor_family = factor_family, dispersion = dispersion,
+  #              glm_weights = glm_weights, sample_size = sample_size)
+  
+  return (matrix(rowSums(grad), nrow = q))
+}
+
+FastGaussian_GradRow <- function(LX_row, Vt, factor_family, dispersion, glm_weights){
+  
+
+  q = dim(Vt)[2]
+  # family_pdf = pdf_calc(factor_family, glm_weights = glm_weights, dispersion = dispersion, log_ = TRUE)
+  
+  L_row = matrix(LX_row[1:q], nrow = 1)
+  X_row = matrix(LX_row[-c(1:q)], nrow = 1)
+  eta_row = tcrossprod(L_row, Vt)
+  mu_row =  factor_family$linkinv(eta_row)
+  var_row = factor_family$variance(mu_row)
+  mueta_row = factor_family$mu.eta(eta_row)
+  hessian_L = 1/dispersion * crossprod(sweep(Vt, 1, var_row, "*"), Vt)
+  
+  L_pos = matrix(tcrossprod(ginv(ginv(hessian_L) + diag(1, nrow= q)), L_row), nrow=1)
+  Sigma_pos = ginv(diag(1, nrow= q) + hessian_L) + diag(1e-08, nrow = q)
+  
+  eta_pos = tcrossprod(L_pos, Vt)
+  mu_pos = factor_family$linkinv(eta_pos)
+  # [todo: fix glm weights]
+  scales = (mu_pos - X_row) * mueta_row/var_row
+  # scales = (X_row - mu_pos) * mueta_row/var_row
+  b_hat = 1/dispersion * crossprod(L_pos,  scales) 
+  
+  # pos_likeli = sum(family_pdf(X_row, mu_pos, glm_weights = glm_weights)) + dmvnorm(L_pos, mean = rep(0, q), sigma = Sigma_pos, log = TRUE)
+  #pos_likeli = dmvnorm(X_row, mean = mu_row, sigma =diag(c(var_row), nrow = d)) * dmvnorm(L_pos, mean = rep(0,q), sigma = Sigma_pos)
+  # pos_likeli = dmvnorm(L_pos, mean = mu_pos, sigma = Sigma_pos)
+  constant = (2 * pi)^(q/2) * det(Sigma_pos)^(1/2) 
+  return(b_hat * constant)
+}
+
+
+efm_batch <-function(Vt, batch_size, step_size, X, factor_family, algo = 'lapl',
+                     max_epoch = 5, dispersion = 1,  weights = 1,
+                     adam_control = list(rho = 1, abs_tol =1e-6,
+                                         beta1 = 0.9, beta2 = 0.999, 
+                                         epislon = 10^-8, sample_random = TRUE),
+                     sample_size, eval_size,
+                     eval_likeli = FALSE, identify_ = FALSE){
+  sml_time = 0
+  n = dim(X)[1]
+  d = dim(X)[2]
+  q = dim(Vt)[2]
+  
+  if (length(weights) == 1)
+    weights <- rep(weights, n * d)else {
+      if (is.vector(weights)) {
+        if (length(weights) != n)
+          stop("inconsistent number of weights")
+        else
+          weights <- rep(weights, d)
+      } else {
+        if (nrow(weights) != n && ncol(weights) != d)
+          stop("inconsistent number of weights")
+      }
+    }
+  dim(weights) <- dim(X)
+  
+  v_dv = matrix(0, nrow = q, ncol = d)
+  s_dv = matrix(0, nrow = q, ncol = d)
+  like_list <- rep(0, max_epoch * as.integer(n/batch_size))
+  
+  for (epoch in 1:max_epoch){
+    for(k in 1:as.integer(n/batch_size)){
+      if(adam_control$sample_random == TRUE){
+        sample_index = sample(1:n, batch_size, replace = TRUE)
+      }else{
+        batch_size = n
+        sample_index = 1:n  
+      }
+      X_batch <- X[sample_index,]
+      n_sub <- dim(X_batch)[1]
+      weight_batch <- weights[sample_index,]
+        
+      # [Finding gradient moment using posterior Lambda]
+      grad <- switch(algo,
+                     lapl = Lapl_grad(X_batch, Vt, factor_family, weight_batch, dispersion),
+                     sml = SML_grad(Vt, factor_family, X_batch, q, sample_size, dispersion = dispersion, glm_weights = weight_batch),
+                     fastgaussian = FastGaussian_grad(X_batch, Vt, factor_family, dispersion, weight_batch),
+                     ps = PosSample_grad(X_batch, Vt, factor_family, dispersion, weight_batch, sample_size),
+                     stop("Algo `", algo, "` not recognized"))
+      grad = grad * n/batch_size
+      
+      # [ Adam step ]
+      v_dv = adam_control$beta1 * v_dv + (1 - adam_control$beta1) * grad
+      s_dv = adam_control$beta2 * s_dv + (1 - adam_control$beta2) * grad^2
+      adam_t = (epoch - 1) * as.integer(n / batch_size) + k
+      vhat_dv = v_dv/(1 - adam_control$beta1^adam_t)
+      shat_dv = s_dv/(1 - adam_control$beta2^adam_t)
+      
+      lr_schedule = step_size/(1 + 0.1 * adam_t^adam_control$rho)
+      Vt_update =  lr_schedule* t(vhat_dv/(sqrt(shat_dv) + adam_control$epislon))
+      Vt = Vt - Vt_update
+      
+      #[Identifiability]
+      if(identify_){
+        svd_efm = svd(Vt)
+        svd_efm$u = efm_sign(svd_efm$u)
+        Vt = sweep(svd_efm$u, 2, svd_efm$d, '*')
+      }
+      
+      # [print info looking into V_star]
+      if (eval_likeli){
+        start = Sys.time()
+        like_list[adam_t] = SML_neglikeli(Vt, factor_family,
+                                          X, q, eval_size,
+                                          dispersion = dispersion, glm_weights = weights, print_likeli = FALSE)  
+        end = Sys.time()
+        sml_time = sml_time  + as.numeric(difftime(end, start, units = 's'))
+      }
+      
+      print_info = c(mean(Vt_update^2), mean(abs((Vt)/V_star)), mean((tcrossprod(V_star) - tcrossprod(Vt))^2),  lr_schedule, like_list[adam_t])
+      print(print_info)
+      plot(like_list[1:adam_t], main = round(print_info,2),)
+      
+      
+      # [early stopping]
+      update_norm = mean((Vt_update)^2)
+      stop_flag = update_norm < adam_control$abs_tol
+      if ((epoch >= 2)&&( stop_flag )){
+        print('find optimal points')
+        return(list(V = Vt, family = factor_family, 
+                    efm_it = adam_t, sml_time = sml_time, like_list =like_list[1:adam_t]))
+      }
+    } # end of one epoch
+  } # end of max epoch
+  return(list(V = Vt, 
+              family = factor_family,
+              efm_it = adam_t,
+              sml_time = sml_time,
+              like_list =like_list[1:adam_t]
+  ))
+  
+} # end of function 
+
+
+# [function to reproduce previous result, should be ignored from package release]
+# batch_opti3<-function(Vt, batch_size, step_size, X, factor_family, q, max_epoch = 1,
+#                       sample_size = 100, beta1 = 0.9, beta2 = 0.999,epislon = 10^-8,
+#                       phi_star = 1, rho = 1, scale_weights = 1, like_threshold =0, sample_random = TRUE,
+#                       eval_likeli = TRUE){
+#   best_norm = Inf
+#   sml_time = 0
+#   # [Adam initialization]
+#   n = dim(X)[1]
+#   d = dim(X)[2]
+#   family_pdf = pdf_calc(factor_family, glm_weights = 1, dispersion= phi_star, log = TRUE)
+#   v_dv = matrix(0, nrow = q, ncol = d)
+#   s_dv = matrix(0, nrow = q, ncol = d)
+#   like_list = rep(0, max_epoch * as.integer(n/batch_size))
+#   
+#   for (epoch in 1:max_epoch){
+#     for(k in 1:as.integer(n/batch_size)){
+#         if(sample_random ==TRUE){
+#           sample_index = sample(1:n, batch_size)
+#         }else{
+#           batch_size = n
+#           sample_index = 1:n
+#         }
+#         X_batch = X[sample_index,]
+#         n_sub = dim(X_batch)[1]
+#         
+#         # [Finding the stationary point of L]
+#         L_mle = batch_mle(X_batch, Vt, factor_family, q)
+#         mu_mle = factor_family$linkinv(tcrossprod(L_mle,Vt))
+#   
+#         # [Computing Laplacian sampling parameters]
+#         Weight_matrix = cbind(Weight_row = tcrossprod(L_mle, Vt), L_row = L_mle) # for non-gaussian
+#         rmv_norm = function(Weight_row) {
+#             L_row = matrix(Weight_row[(d+1):(d+q)], nrow= 1)
+#             Weight_row = Weight_row[1:d]
+#             mu_hat = factor_family$linkinv(Weight_row)
+#             diag_term = diag(scale_weights * factor_family$variance(mu_hat), nrow = d)
+#             hessian = tcrossprod(crossprod(Vt, diag_term), t(Vt))
+#             Sigma_pos = ginv(diag(1, nrow= q) + hessian) + diag(1e-08, nrow = q)
+#             Sigma_chol = chol(Sigma_pos)
+#             mu_pos = tcrossprod(ginv(ginv(hessian) + diag(1, nrow= q)), L_row)
+#             return(mu_pos + tcrossprod(Sigma_chol, matrix(rnorm(1 * q), nrow = 1)))
+#         }
+#       
+#   
+#         # L_mle = batch_mle(X_batch, Vt, factor_family, q)
+#         # LX_matrix = cbind(L_mle, X_batch)
+#         # moments = apply(LX_matrix,1, PosSample_Moments, Vt, factor_family, dispersion, glm_weights)
+#         # L_sample2 = lapply(moments, PosSample_Draw, sample_size)
+#         # 
+#         
+#         # sample_func <- function(k){t(matrix(apply(Weight_matrix, 1,rmv_norm), ncol = batch_size))}
+#         # sample_idx = matrix(1:sample_size)
+#         # L_sample = apply(sample_idx, 1, sample_func)
+#   
+#         set.seed(1)
+#         grad = matrix(0, nrow = q, ncol = d)
+#         for (b in 1:sample_size){
+#           #[poisson sample]
+#             L_sample = t(matrix(apply(Weight_matrix, 1,rmv_norm), ncol = batch_size))
+#             eta_simu = tcrossprod(L_sample, Vt)
+#             mu_simu = factor_family$linkinv(eta_simu)
+#             grad = grad + (scale_weights* crossprod(L_sample, mu_simu - X_batch))
+#         }
+#         
+#         grad = grad / sample_size  * n/batch_size
+#         # set.seed(1)
+#         # grad2 = PosSample_grad(X_batch, Vt, factor_family, dispersion, glm_weights, sample_size) * n/batch_size
+#         # print(mean((grad2 -grad)^2))
+#         
+#         
+#         #[ Adam step]
+#         v_dv = beta1 * v_dv + (1-beta1)*grad
+#         s_dv = beta2 * s_dv + (1-beta2)*grad^2
+#         adam_t = (epoch-1)*as.integer(n/batch_size) + k
+#         vhat_dv = v_dv/(1-beta1^adam_t)
+#         shat_dv = s_dv/(1-beta2^adam_t)
+#   
+#         # Vt_update = t(vhat_dv/(sqrt(shat_dv) + epislon))
+#         lr_schedule = step_size/(1 + 0.1 * adam_t^rho)
+#         # lr_schedule = step_decay(step_min, step_max, epoch %% t_epoch, t_epoch)
+#         Vt_update =  lr_schedule  * t(vhat_dv/(sqrt(shat_dv) + epislon))
+#         # Vt = Vt - step_size/(1 + 0.1 * adam_t^rho) * Vt_update
+#         Vt = Vt -  Vt_update
+#   
+#         #[Identifiability]
+#         # svd_efm = svd(Vt)
+#         # negative_flag = c(1:q)[svd_efm$u[1,]<0]
+#         # svd_efm$u[,negative_flag] = matrix(-svd_efm$u[,negative_flag])
+#         # Vt = tcrossprod(svd_efm$u, diag(svd_efm$d))
+#         #print(Vt)
+#   
+#         # [early stopping]
+#         update_norm = mean((Vt_update)^2)
+#         print_info = c(update_norm, mean((V_star -Vt)^2), lr_schedule)
+#         print(print_info)
+#   
+#   
+#         if (eval_likeli){
+#           start = Sys.time()
+#           like_list[adam_t] = SML_neglikeli(Vt, factor_family,
+#                                             X, q, sample_size,
+#                                             dispersion = dispersion, glm_weights = glm_weights, print_likeli = FALSE)  
+#           end = Sys.time()
+#           sml_time = sml_time  + as.numeric(difftime(end, start, units = 's'))
+#         }
+#         plot(like_list[1:adam_t], main = round(print_info,2))
+#   
+#         
+#         
+#   
+#         # [find the best norm]
+#         running_norm = sum((V_star -Vt)^2)
+#         best_norm = min(update_norm, running_norm)
+#   
+#         #stop_flag = update_norm < 0.01
+#         stop_flag = update_norm < like_threshold
+#         if ((epoch>=2)&(stop_flag)){
+#           L_mle = batch_mle(X, Vt, factor_family, q)
+#           print('find optimal points')
+#           return(list(V = Vt, L = L_mle, family = factor_family, best_norm = best_norm, efm_it = adam_t))}
+#       } # end of batch
+#   } # end of epoch
+#   L_mle = batch_mle(X, Vt, factor_family, q)
+#   L_pos = apply(L_mle,1, comput_mupos, Vt, factor_family = factor_family)
+#   return(list(like_list = like_list, V = Vt, L = t(L_pos),
+#               family = factor_family,
+#               best_norm = best_norm,
+#               efm_it = adam_t
+#   ))
+# }
+

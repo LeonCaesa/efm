@@ -1,0 +1,21 @@
+Package: efm
+Title: Exponential Factor Model
+Version: 0.1
+Authors@R: 
+    person(given = "Luis",
+           family = "Carvalho",
+           role = c("aut", "cre"),
+           email = "lecarval@math.bu.edu",
+           comment = c(ORCID = "YOUR-ORCID-ID"))
+    person(given = "Liang",
+             family = "Wang",
+             role = c("aut", "cre"),
+             email = "leonwang@bu.edu",
+             comment = c(ORCID = "0000-0002-2399-463X"))
+Description: What the package does (one paragraph).
+License: 'devtools::use_mit_license()'
+Encoding: UTF-8
+LazyData: true
+Imports: mvtnorm, MASS, matrixStats, stats, glmnet
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3

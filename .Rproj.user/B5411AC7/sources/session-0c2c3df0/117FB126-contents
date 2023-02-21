@@ -1,0 +1,75 @@
+setwd('/projectnb2/dmfgrp/Laplacian_EFM')
+
+library(efm)
+set.seed(3)
+if (!require("R.matlab")) install.packages("R.matlab")
+if (!require("snedata")) install.packages("snedata")
+if (!require("MASS")) install.packages("MASS")
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("glmnet")) install.packages("glmnet")
+source(file = '/projectnb/dmfgrp/Laplacian_EFM/CVPlot.R')
+
+
+
+
+# [ORL Face]
+data_dir = '/projectnb/dmfgrp/Exponential_Factor_Model/data'
+#ORL_datadir = paste(data_dir, '/ORL_64x64.mat', sep ='')
+ORL_datadir = paste(data_dir, '/ORL_32x32.mat', sep ='')
+X<- readMat(ORL_datadir)$fea
+label = readMat(ORL_datadir)$gnd
+num_labels = length(unique(label))
+batch_size = 256
+q = 20
+
+# [Add noise to crop picture]
+n = dim(X)[1]
+p = dim(X)[2]
+glm_weights = matrix(1, nrow = n, ncol = p)
+
+rnum_pixel = 32
+cnum_pixel = 32
+crop_idx = t(replicate(n, sample.block(10, rnum_pixel), simplify = TRUE))
+glm_weights = mapply(mask.picture, asplit(glm_weights, 1), asplit(crop_idx, 1))
+X = mapply(mask.picture, asplit(X, 1), asplit(crop_idx, 1), MoreArgs = list(assign_value = 255))
+
+test_sample = sample.int(10, size = 40, replace = TRUE)
+test_idx = test_sample + cumsum(rep(10, 40)) - 10
+train_idx = c(1:n)[-test_idx]
+train_face = X[,train_idx]; train_weights = glm_weights[,train_idx]
+test_face = X[,test_idx]; test_weights = glm_weights[,test_idx]
+
+
+num_pic = 3
+plot_cfit(as.tibble(t(train_face)), rnum_pixel, cnum_pixel, num_pic )
+
+
+# [efm fit]
+phi_star = mean(train_face)^2/(sd(train_face)^2 - mean(train_face))
+factor_family = negative.binomial(phi_star)
+
+adam_control = adam.control(max_epoch = 20, batch_size = batch_size,
+                            step_size = 0.5, rho =0.9, abs_tol = 1e-6,
+                            beta1 = 0.9, beta2 = 0.999, epislon = 10 ^ -8)
+sample_control = sample.control(sample_size = 500, eval_size = 500)
+
+#Vstart = svd(t(train_face), nu =q, nv = q)$v
+efm_fit = efm(t(train_face), factor_family = factor_family, rank = q, t(train_weights),
+              algo = 'lapl', dispersion = phi_star,
+              adam_control = adam_control, sample_control = sample_control, eval_likeli = TRUE)
+
+# [visualize the result]
+num_pic = 5
+plot_cfit(as.tibble(t(efm_fit$V)), rnum_pixel, cnum_pixel, num_pic )
+
+
+# [restore the faces]
+
+L_test = t(mapply(ridge_coef, asplit(t(test_face), 1), asplit(t(test_weights),1), MoreArgs = list(Vt =efm_fit$V, factor_family = factor_family)))
+mu_test = factor_family$linkinv(tcrossprod(L_test, efm_fit$V))
+num_pic = 5
+g1 = plot_cfit(as.tibble(t(test_face)), rnum_pixel, cnum_pixel, num_pic )
+g2 = plot_cfit(as.tibble(mu_test), rnum_pixel, cnum_pixel, num_pic )
+gridExtra::grid.arrange(g1, g2, nrow = 2)
+
+

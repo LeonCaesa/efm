@@ -1,0 +1,118 @@
+library(tidyverse)
+library(gridExtra)
+library(data.table)
+library(grid)
+plot_dim = 3
+check_model = 'tree'
+#check_model = c('knn', 'multi')
+#check_class = 'Pop'
+if (check_class == 'SuperPop'){
+  add_name = 'SuperPop/'
+  plot_level =  rev(c('SAS', 'EUR', 'EAS', 'AMR', 'AFR'))  
+}else{
+  add_name =''
+  plot_level =  rev(c("PJL", "BEB", "STU", "ITU", "GIH", "GBR",
+                      "FIN", "IBS" ,"CEU", "TSI", "CHS", "CDX" ,
+                      "KHV", "CHB" ,"JPT", "PUR", "CLM", "PEL" ,"MXL",
+                      "ACB", "GWD", "ESN", "MSL", "YRI" ,"LWK", "ASW"))  
+}
+if (plot_dim ==3){
+  load(paste('/projectnb/dmfgrp/GeneDMF/agg_confusion/correct_label/', add_name, 'PCA_AllChrConfu3D.RData', sep =''))  
+  pca_load = confuM_agg; colnames(pca_load) = c("predicted","true" , "value","model")
+  load(paste('/projectnb/dmfgrp/GeneDMF/agg_confusion/correct_label/', add_name, 'DMF_AllChrConfu3D.RData', sep = ''))
+  dmf_load  = confuM_agg; colnames(dmf_load) = c("predicted","true" , "value","model")  
+  plot_DMFtitle = 'DMF 3D with All Chr'
+  plot_PCAtitle = 'PCA 3D with All Chr'
+}else if(plot_dim ==6){
+  load(paste('/projectnb/dmfgrp/GeneDMF/agg_confusion/correct_label/', add_name, 'PCA_AllChrConfu6D.RData', sep =''))  
+  pca_load = confuM_agg; colnames(pca_load) = c("predicted","true" , "value","model")
+  load(paste('/projectnb/dmfgrp/GeneDMF/agg_confusion/correct_label/', add_name, 'DMF_AllChrConfu6D.RData', sep = ''))
+  dmf_load  = confuM_agg; colnames(dmf_load) = c("predicted","true" , "value","model")  
+  plot_DMFtitle = 'DMF 6D with All Chr'
+  plot_PCAtitle = 'PCA 6D with All Chr'
+}else if(plot_dim ==20){
+  load(paste('/projectnb/dmfgrp/GeneDMF/agg_confusion/correct_label/', add_name, 'PCA_AllChrConfu20D.RData', sep =''))  
+  pca_load = confuM_agg; colnames(pca_load) = c("predicted","true" , "value","model")
+  load(paste('/projectnb/dmfgrp/GeneDMF/agg_confusion/correct_label/', add_name, 'DMF_AllChrConfu20D.RData', sep = ''))
+  dmf_load  = confuM_agg; colnames(dmf_load) = c("predicted","true" , "value","model")  
+  plot_DMFtitle = 'DMF 20D with All Chr'
+  plot_PCAtitle = 'PCA 20D with All Chr'
+}
+
+
+# [change to percentage]
+dmf_load = dmf_load %>% group_by(true, model) %>% mutate(totl = sum(value))
+dmf_load$value = round(dmf_load$value/dmf_load$totl,3) * 100
+pca_load = pca_load %>% group_by(true, model) %>% mutate(totl = sum(value))
+pca_load$value = round(pca_load$value/pca_load$totl,3) * 100
+
+
+
+samples <- fread("/projectnb/dmfgrp/GeneDMF/data/integrated_call_samples_v3.20130502.ALL.panel",sep="\t", header = F)
+pops <- samples[, c('V2','V3')] %>% unique()
+popsAMR <- pops %>% filter(V3 == "AMR")
+popsAFR <- pops %>% filter(V3 == "SAS")
+
+
+
+library("gtools")
+big_cell_size = 1
+width = 26
+
+make_cell_data <- function(cell_size) {
+  n_cells = width / cell_size
+  vals = seq(from = cell_size / 2, to = width, by = cell_size)
+  perms <- permutations(length(vals),2, v=vals)
+  x_vals <- append(perms[,1], vals)
+  y_vals <- append(perms[,2], vals)
+  data.frame(x = x_vals, y = y_vals)
+}
+
+
+
+
+#g1 = ggplot(dmf_load %>% filter(true %in% c(popsAFR$V2, popsAMR$V2)) %>% filter(model == check_model),
+g1 = ggplot(dmf_load %>% filter(model %in% c(check_model)),
+            aes(x=factor(true,level = plot_level),y=factor(predicted,level = plot_level), fill=value)) +
+  geom_tile() + theme_bw() + coord_equal() +
+  scale_fill_distiller(palette="Greens",  limits = c(0, 200), direction=1) +
+  xlab('True') + ylab('Predicted') +  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  guides(fill=F) + 
+  facet_wrap(~model) +
+  labs(title = plot_DMFtitle)  #+# using a title instead
+# geom_text( aes(label=value), color="black") # printing values
+  #geom_text(size=3, aes(label=value), color="black") # printing values
+
+# g2 = ggplot(pca_load %>% filter(true %in% c(popsAFR$V2, popsAMR$V2)) %>% filter(model == check_model), 
+g2 = ggplot(pca_load %>% filter(model %in% c(check_model)),
+            aes(x=factor(true,level = plot_level),y=factor(predicted,level = plot_level), fill=value)) +
+  geom_tile() + theme_bw() + coord_equal() +
+  scale_fill_distiller(palette="Greens", limits = c(0, 200), direction=1) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  xlab('True') + ylab('Predicted') +  theme(plot.title = element_text(hjust = 0.5)) +
+  guides(fill=F) + 
+  facet_wrap(~model) +
+  labs(title = plot_PCAtitle) #+ # using a title instead
+  #geom_text(size=3, aes(label=value), color="black") # printing values
+
+#[super pop]
+#png(filename = '/projectnb/dmfgrp/GeneDMF/figure/SPop3DAll_Confu.png', units="in",width=8, height=6, res=300)
+#png(filename = '/projectnb/dmfgrp/GeneDMF/figure/SPop20DAll_Confu.png', units="in", width=8, height=6, res=300)
+
+#[pop]
+# [tree]
+png(filename = '/projectnb/dmfgrp/GeneDMF/figure/Pop3DAll_TreeConfu.png', units="in", width=8, height=6, res=300)
+#png(filename = '/projectnb/dmfgrp/GeneDMF/figure/Pop20DAll_TreeConfu.png', units="in", width=8, height=6, res=300)
+title <- arrangeGrob(zeroGrob(), textGrob(paste('Tree ', 'classifier'),gp=gpar(fontsize=15)),
+                     widths = unit(1, 'npc'),
+                     heights = unit(c(2, 1), c('cm', 'npc')),
+                     as.table = FALSE)
+grid.arrange(g1,g2, nrow =1, top = title)
+dev.off()
+
+# [multi and knn]
+#png(filename = '/projectnb/dmfgrp/GeneDMF/figure/Pop3DAll_OtherConfu.png', units="in", width=8, height=10, res=300)
+#png(filename = '/projectnb/dmfgrp/GeneDMF/figure/Pop20DAll_OtherConfu.png', units="in", width=8, height=10, res=300)
+#grid.arrange(g1,g2, nrow =2)
+#dev.off()
