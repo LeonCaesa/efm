@@ -39,12 +39,14 @@ efm_fit = efm(X, factor_family = factor_family, rank = q, glm_weights, algo = 'p
               dispersion = phi_star, adam_control = adam_control,
               sample_control = sample_control, eval_likeli = TRUE)
 
+efm_fit$V = efm_identify(efm_fit$V)
 save_name = paste('/projectnb/dmfgrp/Laplacian_EFM/Result/CVFit/Fashion_Epoch',
                   adam_control$max_epoch,
                   '_lr', adam_control$step_size,
                   '_b', adam_control$batch_size,
                   '.RData', sep ='')
-save(efm_fit, file = save_name)
+# save(efm_fit, file = save_name)
+load(save_name)
 
 
 # [estimate local variable]

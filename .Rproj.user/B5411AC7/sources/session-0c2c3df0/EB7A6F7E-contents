@@ -100,9 +100,9 @@ A_dmf = as.matrix(A_totl>=1)
 # glm_weights = matrix(rep(rowSums(A_dmf), n), nrow =n)
 diag(glm_weights)= 0
 
-adam_control = adam.control(max_epoch = 100, batch_size = 32,
-                            step_size = 0.5, rho =0.9, abs_tol = 1e-6,
-                            beta1 = 0.9, beta2 = 0.999, epislon = 10 ^ -8)
+adam_control = adam.control(max_epoch = 1000, batch_size = 32,
+                            step_size = 0.5, rho =0, abs_tol = 1e-6,
+                            beta1 = 0.9, beta2 = 0.999, epsilon = 10 ^ -8)
 sample_control = sample.control(sample_size = 500, eval_size = 1500)
 
 
@@ -111,6 +111,9 @@ efm_fit = efm(A_dmf, factor_family = glm_family, rank = rank_, glm_weights, algo
               adam_control = adam_control, sample_control = sample_control, eval_likeli = TRUE)
 
 
+#save(efm_fit, file = '/projectnb/dmfgrp/Laplacian_EFM/Result/CVFit/EFM_AUCS1000Epoch.RData')
+#load('/projectnb/dmfgrp/Laplacian_EFM/Result/CVFit/EFM_AUCS200Epoch.RData')
+#plot(efm_fit$like_list)
 
 PCs_WDMF= efm_identify(efm_fit$V)
 PCs = PCs_WDMF
@@ -132,5 +135,5 @@ plot_ly(data = plot_df, x= ~PC1, y =~ PC2, z =~PC3,  opacity= 1,
         color = ~ as.factor(label),
         type="scatter3d", mode="markers",
         marker = list(size = 5)) %>%
-  layout(title = 'ASE Embedding',
+  layout(title = 'Weighted EFM Embedding',
          legend = list(orientation = 'h', xanchor = "center", x = 0.5), margin = m)

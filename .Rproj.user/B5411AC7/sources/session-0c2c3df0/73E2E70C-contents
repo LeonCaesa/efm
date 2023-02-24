@@ -148,8 +148,8 @@ efm_sign <- function (V) {
 #' @param beta1 controls the exponential decay rate used to scale the biased first moment estimate.
 #' @param beta2 controls the exponential decay rate used to scale the biased second raw moment estimate.
 #' @param rho learning rate decay through `step_size/(1 + 0.1 * t^{\rho})` with t being the iteration.
-#' @param epislon smoothing term to avoid division by zero.
-#' @param abs_tol positive convergence tolerance `\epislon`; the iterations converge when |dev - dev_{old}|/(|dev| + 0.1) < `\epsilon`.
+#' @param epsilon smoothing term to avoid division by zero.
+#' @param abs_tol positive convergence tolerance `\epsilon`; the iterations converge when |dev - dev_{old}|/(|dev| + 0.1) < `\epsilon`.
 #' @return list of adam optimization parameters
 #' @export
 adam.control <- function(max_epoch = 10,
@@ -159,7 +159,7 @@ adam.control <- function(max_epoch = 10,
                          abs_tol = 1e-6,
                          beta1 = 0.9,
                          beta2 = 0.999,
-                         epislon = 10 ^ -8) {
+                         epsilon = 10 ^ -8) {
   list(
     max_epoch = max_epoch,
     batch_size = batch_size,
@@ -168,7 +168,7 @@ adam.control <- function(max_epoch = 10,
     abs_tol = abs_tol,
     beta1 = beta1,
     beta2 = beta2,
-    epislon = epislon
+    epsilon = epsilon
   )
 }
 
@@ -215,7 +215,7 @@ efm <- function(x,
                   abs_tol = 1e-6,
                   beta1 = 0.9,
                   beta2 = 0.999,
-                  epislon = 10 ^ -8),
+                  epsilon = 10 ^ -8),# typo
                 sample_control = sample.control(sample_size = 50, eval_size = 50),
                 eval_likeli = FALSE,
                 identify_ = FALSE) {
@@ -295,7 +295,7 @@ efm <- function(x,
       shat_dv = s_dv / (1 - adam_control$beta2 ^ adam_t)
 
       lr_schedule = adam_control$step_size / (1 + 0.1 * adam_t ^ adam_control$rho)
-      Vt_update =  lr_schedule * t(vhat_dv / (sqrt(shat_dv) + adam_control$epislon))
+      Vt_update =  lr_schedule * t(vhat_dv / (sqrt(shat_dv) + adam_control$epsilon))
       Vt = Vt - Vt_update
 
       #[Identifiability]
@@ -314,14 +314,14 @@ efm <- function(x,
           sample_control$eval_size,
           dispersion = dispersion,
           weights = weights,
-          print_likeli = FALSE
+          print_likeli = TRUE
         )
         plot(like_list[1:adam_t])
       }
 
       # [early stopping]
       update_norm = mean((Vt_update) ^ 2)
-      print(update_norm)
+      #print(update_norm)
       stop_flag = update_norm < adam_control$abs_tol
       if ((epoch >= 2) && (stop_flag)) {
         print('find optimal points')
