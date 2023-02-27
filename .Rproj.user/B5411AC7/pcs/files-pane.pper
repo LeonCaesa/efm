@@ -1,9 +1,13 @@
 {
     "sortOrder": [
         {
+            "columnIndex": 4,
+            "ascending": false
+        },
+        {
             "columnIndex": 2,
             "ascending": true
         }
     ],
-    "path": "/projectnb/dmfgrp/Laplacian_EFM"
+    "path": "/projectnb/dmfgrp/Laplacian_EFM/CV_Experiment"
 }
