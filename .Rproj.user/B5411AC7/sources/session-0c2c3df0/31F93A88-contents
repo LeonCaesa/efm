@@ -84,9 +84,9 @@ ridge_coef <- function(X_vec, weight_vec, Vt, factor_family){
                        intercept = FALSE, standardize = FALSE, thresh= 1e-10,
                        type.logistic = c("Newton"))
   #print(Vt)
-  as.vector(coef(pen_result, s = sd_scalar * 1/d, exact = TRUE, x = Vt, y = X_vec,
+  return(as.vector(coef(pen_result, s = sd_scalar * 1/d, exact = TRUE, x = Vt, y = X_vec,
                  family = factor_family,
-                 weights = weight_vec))[-1]
+                 weights = weight_vec))[-1])
 }
 
 

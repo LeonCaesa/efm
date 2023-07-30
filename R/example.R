@@ -1,6 +1,5 @@
 library(efm)
 library(MASS)
-
 # [4.1 simulated data]
 set.seed(2)
 d = 10
@@ -9,7 +8,7 @@ q = 2
 dispersion = 1
 adam_control = adam.control(max_epoch = 10, batch_size = 64,
                             step_size = 0.1, rho = 0, abs_tol = 1e-6,
-                            beta1 = 0.9, beta2 = 0.999, epislon = 10 ^ -8)
+                            beta1 = 0.9, beta2 = 0.999, epsilon = 10 ^ -8)
 sample_control = sample.control(sample_size = 500, eval_size = 500)
 
 # factor_family = negative.binomial(dispersion)
