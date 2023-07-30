@@ -77,36 +77,41 @@ simu_pos = function(mu_pos, CholSigma, sample_size = 1){
 
 
 # [gradient calculation --- Laplacian]
-ridge_coef <- function(X_vec, weight_vec, Vt, factor_family){
+ridge_coef <- function(X_vec, weight_vec, Vt, center, factor_family){
   d = dim(Vt)[1]
   sd_scalar = sqrt(var(X_vec)*(d-1)/d)
-  pen_result <- glmnet(x = Vt, y= X_vec, family = factor_family, alpha = 0, lambda=1, weights = weight_vec,
+  pen_result <- glmnet(x = Vt, y= X_vec, family = factor_family, alpha = 0, lambda = 1,
+                       weights = weight_vec, offset = center,
                        intercept = FALSE, standardize = FALSE, thresh= 1e-10,
                        type.logistic = c("Newton"))
   #print(Vt)
   return(as.vector(coef(pen_result, s = sd_scalar * 1/d, exact = TRUE, x = Vt, y = X_vec,
-                 family = factor_family,
+                 family = factor_family, offset = center,
                  weights = weight_vec))[-1])
 }
 
 
 
-Lapl_grad <- function(X_batch, Vt, factor_family, weights, dispersion, q= dim(Vt)[2]){
+Lapl_grad <- function(X_batch, Vt, factor_family, weights, dispersion, center, q = dim(Vt)[2]){
   n <- dim(X_batch)[1]
   d <- dim(X_batch)[2]
-  Vt <- matrix(Vt, nrow= d, ncol =q)
+  Vt <- matrix(Vt, nrow = d, ncol =q)
 
   L_mle = t(mapply(ridge_coef, X_vec = asplit(X_batch, 1),
                    weight_vec = asplit(weights, 1),
-                   MoreArgs = list(Vt = Vt, factor_family = factor_family)))
+                   MoreArgs = list(Vt = Vt, factor_family = factor_family, center = c(center))))
 
-  eta_mle = tcrossprod(L_mle, Vt)
+  eta_mle = sweep(tcrossprod(L_mle, Vt), 2 , center, '+')
   mu_mle = factor_family$linkinv(eta_mle)
   g = factor_family$mu.eta(eta_mle); dim(g) = dim(eta_mle)
   v = factor_family$variance(mu_mle); dim(v) = dim(eta_mle)
   scales = (mu_mle - X_batch) * weights * g/v # to do: confirm the weights
-  grad = 1/ dispersion * t(crossprod(scales, L_mle))
-  return(grad)
+  grad_V = 1/ dispersion * t(crossprod(scales, L_mle))
+
+  grad_center = colSums(scales/dispersion)
+
+
+  return(list(grad_V = grad_V, grad_center = grad_center))
 }
 
 # [gradient calculation --- SML]

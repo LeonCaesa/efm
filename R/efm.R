@@ -207,6 +207,7 @@ efm <- function(x,
                 algo = 'lapl',
                 start = NULL,
                 dispersion = 1,
+                center = matrix(0, ncol = ncol(x)),
                 adam_control = adam.control(
                   max_epoch = 5,
                   batch_size = 32,
@@ -251,8 +252,8 @@ efm <- function(x,
       stop("dimensions of V are inconsistent")
   }
 
-  v_dv = matrix(0, nrow = rank, ncol = p)
-  s_dv = matrix(0, nrow = rank, ncol = p)
+  v_dv = matrix(0, nrow = rank, ncol = p); s_dv = matrix(0, nrow = rank, ncol = p)
+  v_dcenter = matrix(0, ncol = p); s_dcenter = matrix(0, ncol = p)
   like_list <- rep(0, adam_control$max_epoch * as.integer(n / adam_control$batch_size))
 
   for (epoch in 1:adam_control$max_epoch) {
@@ -264,7 +265,7 @@ efm <- function(x,
       # [Finding gradient moment using posterior Lambda]
       grad <- switch(
         algo,
-        lapl = Lapl_grad(X_batch = x_batch, Vt = Vt, factor_family = factor_family, weights = weight_batch, dispersion = dispersion),
+        lapl = Lapl_grad(X_batch = x_batch, Vt = Vt, factor_family = factor_family, weights = weight_batch, dispersion = dispersion, center = center),
         sml = SML_grad(
           Vt,
           factor_family,
@@ -285,18 +286,30 @@ efm <- function(x,
         ),
         stop("Algo `", algo, "` not recognized")
       )
-      grad = grad * n / adam_control$batch_size
 
-      # [ Adam step ]
-      v_dv = adam_control$beta1 * v_dv + (1 - adam_control$beta1) * grad
-      s_dv = adam_control$beta2 * s_dv + (1 - adam_control$beta2) * grad ^2
+      grad = lapply(grad, "*" ,n / adam_control$batch_size)
+
+      # [Adam lr decay]
       adam_t = (epoch - 1) * as.integer(n / adam_control$batch_size) + k
+      lr_schedule = adam_control$step_size / (1 + 0.1 * adam_t ^ adam_control$rho)
+
+      # [Adam V step]
+      v_dv = adam_control$beta1 * v_dv + (1 - adam_control$beta1) * grad$grad_V
+      s_dv = adam_control$beta2 * s_dv + (1 - adam_control$beta2) * grad$grad_V^2
       vhat_dv = v_dv / (1 - adam_control$beta1 ^ adam_t)
       shat_dv = s_dv / (1 - adam_control$beta2 ^ adam_t)
 
-      lr_schedule = adam_control$step_size / (1 + 0.1 * adam_t ^ adam_control$rho)
+      # [ Adam center step ]
+      v_dcenter = adam_control$beta1 * v_dcenter + (1 - adam_control$beta1) * grad$grad_center
+      s_dcenter = adam_control$beta2 * s_dcenter + (1 - adam_control$beta2) * grad$grad_center^2
+      vhat_dcenter = v_dcenter / (1 - adam_control$beta1 ^ adam_t)
+      shat_dcenter = s_dcenter / (1 - adam_control$beta2 ^ adam_t)
+
       Vt_update =  lr_schedule * t(vhat_dv / (sqrt(shat_dv) + adam_control$epsilon))
+      center_update = lr_schedule * vhat_dcenter / (sqrt(shat_dcenter) + adam_control$epsilon)
+
       Vt = Vt - Vt_update
+      center = center - center_update
 
       #[Identifiability]
       if (identify_) {
