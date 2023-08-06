@@ -106,8 +106,8 @@ Lapl_grad <- function(X_batch, Vt, factor_family, weights, dispersion, center, q
   g = factor_family$mu.eta(eta_mle); dim(g) = dim(eta_mle)
   v = factor_family$variance(mu_mle); dim(v) = dim(eta_mle)
   scales = (mu_mle - X_batch) * weights * g/v # to do: confirm the weights
-  grad_V = 1/ dispersion * t(crossprod(scales, L_mle))
 
+  grad_V = 1/ dispersion * t(crossprod(scales, L_mle))
   grad_center = colSums(scales/dispersion)
 
 
@@ -180,12 +180,16 @@ PosSample_Moments <-function(LX_row, Vt, center, factor_family, dispersion, weig
 PosSample_GradRowV <- function(L_row, X_row, center, weight_row, Vt, factor_family, dispersion, sample_size){
 
   d = dim(Vt)[1];q = dim(Vt)[2]
-  #LX_row = cbind(L_row, X_row)
   LX_row = c(L_row, X_row)
-  Pos_moments <- PosSample_Moments(LX_row, Vt, center, factor_family, dispersion, weight_row)
+  Pos_moments <- PosSample_Moments(LX_row = LX_row, Vt = Vt,
+                                   center = center,
+                                   factor_family = factor_family,
+                                   dispersion = dispersion,
+                                   weights = weight_row)
   L_sample <- PosSample_Draw(Pos_moments, sample_size)
 
   eta_pos = tcrossprod(L_sample, Vt)
+  eta_pos = sweep(eta_pos, 2, center, "+")
   mu_pos = factor_family$linkinv(eta_pos)
   var_pos = factor_family$variance(mu_pos)
   mueta_pos = factor_family$mu.eta(eta_pos)
@@ -193,7 +197,7 @@ PosSample_GradRowV <- function(L_row, X_row, center, weight_row, Vt, factor_fami
 
   scales = sweep(mu_pos, 2, X_row, '-')
   scales = scales * mueta_pos/var_pos
-  scales = sweep(scales, 2, weight_row, '*') # [todo: examine glm weights]
+  scales = sweep(scales, 2, weight_row, '*')
   grad_v = 1/dispersion * crossprod(L_sample, scales)/sample_size
   return( grad_v)
 }
@@ -202,20 +206,23 @@ PosSample_GradRowV <- function(L_row, X_row, center, weight_row, Vt, factor_fami
 PosSample_GradRowCenter <- function(L_row, X_row, center, weight_row, Vt, factor_family, dispersion, sample_size){
 
   d = dim(Vt)[1];q = dim(Vt)[2]
-  #LX_row = cbind(L_row, X_row)
   LX_row = c(L_row, X_row)
-  Pos_moments <- PosSample_Moments(LX_row, Vt, center, factor_family, dispersion, weight_row)
+  Pos_moments <- PosSample_Moments(LX_row = LX_row, Vt = Vt,
+                                   center = center,
+                                   factor_family = factor_family,
+                                   dispersion = dispersion,
+                                   weights = weight_row)
   L_sample <- PosSample_Draw(Pos_moments, sample_size)
 
   eta_pos = tcrossprod(L_sample, Vt)
+  eta_pos = sweep(eta_pos, 2, center, "+")
   mu_pos = factor_family$linkinv(eta_pos)
   var_pos = factor_family$variance(mu_pos)
   mueta_pos = factor_family$mu.eta(eta_pos)
 
-
   scales = sweep(mu_pos, 2, X_row, '-')
   scales = scales * mueta_pos/var_pos
-  scales = sweep(scales, 2, weight_row, '*') # [todo: examine glm weights]
+  scales = sweep(scales, 2, weight_row, '*')
   grad_center = 1/dispersion * colMeans(scales)
   return( grad_center)
 }
@@ -232,9 +239,9 @@ PosSample_Draw <- function(Pos_moments, sample_size){
 
 PosSample_grad <-function(X_batch, Vt, center, factor_family, dispersion, weights,
                           sample_size = sample_size, q= dim(Vt)[2]){
-  n <- dim(X_batch)[1];d <- dim(X_batch)[2];q = dim(Vt)[2]
+  n <- dim(X_batch)[1]; d <- dim(X_batch)[2]; q = dim(Vt)[2]
   Vt <- matrix(Vt, nrow= d, ncol =q)
-
+  #browser()
   L_mle = batch_mle(X_batch, Vt, center, factor_family, q, weights)
   grad_v = mapply(PosSample_GradRowV,
                 L_row = asplit(L_mle, 1),
@@ -252,6 +259,7 @@ PosSample_grad <-function(X_batch, Vt, center, factor_family, dispersion, weight
                 MoreArgs = list(Vt = Vt, factor_family = factor_family,
                                 dispersion = dispersion, sample_size = sample_size,
                                 center = center))
+
   grad_center = matrix(rowSums(grad_center), ncol = d)
   return (list(grad_V = grad_v, grad_center = grad_center))
 }

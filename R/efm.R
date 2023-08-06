@@ -314,6 +314,8 @@ efm <- function(x,
 
       Vt = Vt - Vt_update
       center = center - center_update
+      # print(center_update)
+      #print(center)
 
       #[Identifiability]
       if (identify_) {
