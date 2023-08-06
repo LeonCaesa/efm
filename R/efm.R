@@ -62,7 +62,7 @@ efm_identify <- function(V){
 
 
 
-batch_mle <- function(X_batch, Vt, factor_family, q, weights = 1) {
+batch_mle <- function(X_batch, Vt, center, factor_family, q, weights = 1) {
   n_sub = dim(X_batch)[1]
   d = dim(X_batch)[2]
   mu <- family_initialize(X_batch, weights = weights, factor_family)
@@ -73,7 +73,7 @@ batch_mle <- function(X_batch, Vt, factor_family, q, weights = 1) {
   is_inf_mu <- is.infinite(mu)
   S <- mu_eta  / var * mu_eta * weights
   S[is_inf_mu] <- 0
-  Z <- eta + (X_batch - mu) / mu_eta # working residuals
+  Z <- sweep(eta, 2, center, '-' ) + (X_batch - mu) / mu_eta # working residuals
   Z[is_inf_mu] <- eta[is_inf_mu]
   for (i in 1:n_sub) {
     si <- sqrt(S[i, ])
@@ -100,6 +100,7 @@ SML_neglikeli <- function(Vt,
                           factor_family,
                           X,
                           sample_size,
+                          center = 0,
                           dispersion = 1,
                           weights = 1,
                           print_likeli = TRUE,
@@ -118,6 +119,7 @@ SML_neglikeli <- function(Vt,
   for (b in 1:sample_size) {
     L_sample <-  matrix(rnorm(n * q), nrow = n)
     eta_simu <- tcrossprod(L_sample, Vt)
+    eta_simu = sweep(eta_simu, 2, center, "+")
     mu_simu <- factor_family$linkinv(eta_simu)
     likeli_simu [, b] <- rowSums(family_pdf(X,
                                             mu = mu_simu,
@@ -267,22 +269,24 @@ efm <- function(x,
         algo,
         lapl = Lapl_grad(X_batch = x_batch, Vt = Vt, factor_family = factor_family, weights = weight_batch, dispersion = dispersion, center = center),
         sml = SML_grad(
-          Vt,
-          factor_family,
-          x_batch,
-          rank,
-          sample_control$sample_size,
+          Vt = Vt,
+          factor_family = factor_family,
+          X = x_batch,
+          q = rank,
+          center = center,
+          sample_size = sample_control$sample_size,
           dispersion = dispersion,
           weights = weight_batch
         ),
         fastgaussian = FastGaussian_grad(x_batch, Vt, factor_family, dispersion, weight_batch),
         ps = PosSample_grad(
-          x_batch,
-          Vt,
-          factor_family,
-          dispersion,
-          weight_batch,
-          sample_control$sample_size
+          X_batch = x_batch,
+          Vt = Vt,
+          center = center,
+          factor_family = factor_family,
+          dispersion = dispersion,
+          weights = weight_batch,
+          sample_size = sample_control$sample_size
         ),
         stop("Algo `", algo, "` not recognized")
       )
@@ -324,6 +328,7 @@ efm <- function(x,
           Vt,
           factor_family,
           x,
+          center = center,
           sample_control$eval_size,
           dispersion = dispersion,
           weights = weights,
@@ -342,6 +347,7 @@ efm <- function(x,
           V = Vt,
           family = factor_family,
           efm_it = adam_t,
+          center = center,
           like_list = like_list[1:adam_t]
         ))
       }
@@ -350,6 +356,7 @@ efm <- function(x,
   return(list(
     V = Vt,
     family = factor_family,
+    center = center,
     efm_it = adam_t,
     like_list = like_list[1:adam_t]
   ))
