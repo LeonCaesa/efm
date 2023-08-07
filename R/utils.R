@@ -5,21 +5,23 @@ normalize <- function (x, margin = 2)
 pdf_calc <-
   function(family,
            weights,
-           dispersion = 1,
+           #dispersion = 1,
            log_ = FALSE) {
     if (grepl('^Negative Binomial', family$family))
       (family$family = 'negbinom')
     family_pdf <- switch(
       family$family,
-      gaussian = function(x, mu, weights)
+      gaussian = function(x, mu, weights, dispersion)
         weights * dnorm(x, mu,  dispersion, log = log_),
-      poisson = function(x, mu, weights)
+      poisson = function(x, mu, weights, dispersion)
         weights *  dpois(x, mu, log = log_),
-      binomial = function(x, mu, weights)
+      quasipoisson = function(x, mu, weights, dispersion) #todo: fix quasipoisson density
+        weights *  dpois(x, mu, log = log_),
+      binomial = function(x, mu, weights, dispersion)
         weights * dbinom(x * weights, weights, mu, log = log_),
-      negbinom = function(x, mu, weights)
+      negbinom = function(x, mu, weights, dispersion)
         weights *  dnbinom(x,  dispersion, mu = mu, log = log_),
-      Gamma = function(x, mu, weights)
+      Gamma = function(x, mu, weights, dispersion)
         weights *  dgamma(
           x,
           shape =  dispersion,
@@ -105,13 +107,20 @@ Lapl_grad <- function(X_batch, Vt, factor_family, weights, dispersion, center, q
   mu_mle = factor_family$linkinv(eta_mle)
   g = factor_family$mu.eta(eta_mle); dim(g) = dim(eta_mle)
   v = factor_family$variance(mu_mle); dim(v) = dim(eta_mle)
-  scales = (mu_mle - X_batch) * weights * g/v # to do: confirm the weights
+  scales = (mu_mle - X_batch) * weights * g/v
 
-  grad_V = 1/ dispersion * t(crossprod(scales, L_mle))
-  grad_center = colSums(scales/dispersion)
+  scale_dispersion =  sweep((mu_mle - X_batch)^2/v, 2, dispersion, '/') - 1
+  #scale_dispersion =  1 - (mu_mle - X_batch)^2/v
 
 
-  return(list(grad_V = grad_V, grad_center = grad_center))
+  scales = sweep(scales, 2, dispersion, '/')
+  grad_V = t(crossprod(scales, L_mle))
+  grad_center = colSums(scales)
+  grad_dispersion = colSums(-sweep(scale_dispersion * weights, 2, dispersion * 2, '/'))
+  #grad_dispersion = colSums(-scale_dispersion * weights/2)
+  #browser()
+
+  return(list(grad_V = grad_V, grad_center = grad_center, grad_dispersion = grad_dispersion))
 }
 
 # [gradient calculation --- SML]
@@ -219,7 +228,6 @@ PosSample_GradRowCenter <- function(L_row, X_row, center, weight_row, Vt, factor
   mu_pos = factor_family$linkinv(eta_pos)
   var_pos = factor_family$variance(mu_pos)
   mueta_pos = factor_family$mu.eta(eta_pos)
-
   scales = sweep(mu_pos, 2, X_row, '-')
   scales = scales * mueta_pos/var_pos
   scales = sweep(scales, 2, weight_row, '*')
@@ -241,7 +249,6 @@ PosSample_grad <-function(X_batch, Vt, center, factor_family, dispersion, weight
                           sample_size = sample_size, q= dim(Vt)[2]){
   n <- dim(X_batch)[1]; d <- dim(X_batch)[2]; q = dim(Vt)[2]
   Vt <- matrix(Vt, nrow= d, ncol =q)
-  #browser()
   L_mle = batch_mle(X_batch, Vt, center, factor_family, q, weights)
   grad_v = mapply(PosSample_GradRowV,
                 L_row = asplit(L_mle, 1),

@@ -11,7 +11,7 @@ NULL
 # `delete dependence on package mvtnorm, MASS, matrixStats
 # `think about better stopping criteria
 
-
+rqpoisson <- function(n, mu, dispersion){rnbinom(n = n, mu = mu, size = mu/(dispersion-1))}
 #' Generate data according to exponential family distribution given parameter `\eta`
 #'
 #' @param family Family object to specify factor loss.
@@ -32,6 +32,7 @@ generate_data <-
       family$family,
       gaussian = rnorm(y_len, mu, sqrt(dispersion)),
       poisson = rpois(y_len, mu),
+      quasipoisson = rqpoisson(y_len, mu, dispersion),
       binomial = rbinom(y_len, weights, mu),
       Gamma = rgamma(y_len , shape =  dispersion, scale = mu /  dispersion),
       negative.binomial = rnegbin(y_len, mu = mu, theta =  dispersion),
@@ -112,10 +113,9 @@ SML_neglikeli <- function(Vt,
     pdf_calc(
       factor_family,
       weights = weights,
-      dispersion = dispersion,
       log_ = log_
     )
-
+  dispersion_eval = do.call(rbind, replicate(n, dispersion, simplify=FALSE))
   for (b in 1:sample_size) {
     L_sample <-  matrix(rnorm(n * q), nrow = n)
     eta_simu <- tcrossprod(L_sample, Vt)
@@ -123,7 +123,9 @@ SML_neglikeli <- function(Vt,
     mu_simu <- factor_family$linkinv(eta_simu)
     likeli_simu [, b] <- rowSums(family_pdf(X,
                                             mu = mu_simu,
-                                            weights = weights), na.rm =  TRUE)
+                                            weights = weights,
+                                            dispersion = dispersion_eval
+                                            ), na.rm =  TRUE)
   }
   neg_likeli = -sum(rowLogSumExps(likeli_simu) - log(sample_size))
   if (print_likeli) {
@@ -241,6 +243,8 @@ efm <- function(x,
   }
   dim(weights) <- dim(x)
 
+  if (length(dispersion) ==1)(dispersion = rep(dispersion, p))
+
   if (is.null(start)) {
     # [ initialize through SVD]
     mu <- family_initialize(x, weights, factor_family)
@@ -256,6 +260,7 @@ efm <- function(x,
 
   v_dv = matrix(0, nrow = rank, ncol = p); s_dv = matrix(0, nrow = rank, ncol = p)
   v_dcenter = matrix(0, ncol = p); s_dcenter = matrix(0, ncol = p)
+  v_dphi = matrix(0, ncol = p); s_dphi = matrix(0, ncol = p)
   like_list <- rep(0, adam_control$max_epoch * as.integer(n / adam_control$batch_size))
 
   for (epoch in 1:adam_control$max_epoch) {
@@ -309,13 +314,27 @@ efm <- function(x,
       vhat_dcenter = v_dcenter / (1 - adam_control$beta1 ^ adam_t)
       shat_dcenter = s_dcenter / (1 - adam_control$beta2 ^ adam_t)
 
+      # [ Adam dispersion step ]
+      v_dphi = adam_control$beta1 * v_dphi + (1 - adam_control$beta1) * grad$grad_dispersion
+      s_dphi = adam_control$beta2 * s_dphi + (1 - adam_control$beta2) * grad$grad_dispersion^2
+      vhat_dphi = v_dphi / (1 - adam_control$beta1 ^ adam_t)
+      shat_dphi = s_dphi / (1 - adam_control$beta2 ^ adam_t)
+
       Vt_update =  lr_schedule * t(vhat_dv / (sqrt(shat_dv) + adam_control$epsilon))
       center_update = lr_schedule * vhat_dcenter / (sqrt(shat_dcenter) + adam_control$epsilon)
+      dispersion_update = lr_schedule * vhat_dphi / (sqrt(shat_dphi) + adam_control$epsilon)
 
-      Vt = Vt - Vt_update
-      center = center - center_update
-      # print(center_update)
-      #print(center)
+
+      # Vt = Vt - Vt_update
+      # center = center - center_update
+      dispersion = dispersion - dispersion_update
+      invalid_flag = dispersion<0
+      dispersion[invalid_flag] = 0.1
+
+      print(paste('dispersion update at', adam_t))
+      print(-dispersion_update)
+      print(paste('dispersion at', adam_t))
+      print(dispersion)
 
       #[Identifiability]
       if (identify_) {
@@ -350,6 +369,7 @@ efm <- function(x,
           family = factor_family,
           efm_it = adam_t,
           center = center,
+          dispersion = dispersion,
           like_list = like_list[1:adam_t]
         ))
       }
@@ -360,6 +380,7 @@ efm <- function(x,
     family = factor_family,
     center = center,
     efm_it = adam_t,
+    dispersion = dispersion,
     like_list = like_list[1:adam_t]
   ))
 
