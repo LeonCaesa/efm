@@ -2,10 +2,27 @@ norm2 <- function (x) norm(as.matrix(x[!is.na(x)]), "2")
 normalize <- function (x, margin = 2)
   sweep(x, margin, apply(x, margin, norm2), `/`)
 
+dquasipois <- function(x, mu, dispersion, log = TRUE){
+  var <- dispersion * mu
+  #add_const <- x - x * log(x)
+  prob_log = 1/dispersion * (x * log(mu) - mu) - 0.5 * log(2 * pi * var) #+ add_const
+  if (log){return(prob_log)
+  }else{return(exp(prob_log))}
+}
+
+dquasibinom <- function(x, mu, dispersion, log = TRUE){
+  var <- dispersion * mu * (1-mu)
+  logits <- x * log(mu/(1-mu)) + log(1-mu)
+  prob_log = 1/dispersion * logits - 0.5 * log(2 * pi * var) #+ add_const
+  if (log){return(prob_log)
+  }else{return(exp(prob_log))}
+}
+
+
 pdf_calc <-
   function(family,
            weights,
-           #dispersion = 1,
+           dispersion = 1,
            log_ = FALSE) {
     if (grepl('^Negative Binomial', family$family))
       (family$family = 'negbinom')
@@ -13,25 +30,35 @@ pdf_calc <-
       family$family,
       gaussian = function(x, mu, weights, dispersion)
         weights * dnorm(x, mu,  dispersion, log = log_),
-      poisson = function(x, mu, weights, dispersion)
+      poisson = function(x, mu, weights, dispersion = 1)
         weights *  dpois(x, mu, log = log_),
-      quasipoisson = function(x, mu, weights, dispersion) #todo: fix quasipoisson density
-        weights *  dpois(x, mu, log = log_),
-      binomial = function(x, mu, weights, dispersion)
+      quasipoisson = function(x, mu, weights, dispersion)
+        weights * dquasipois(x, mu, dispersion, log = log_),
+      quasibinomial= function(x, mu, weights, dispersion)
+        weights * dquasibinom(x, mu, dispersion, log = log_),
+      binomial = function(x, mu, weights, dispersion = 1)
         weights * dbinom(x * weights, weights, mu, log = log_),
-      negbinom = function(x, mu, weights, dispersion)
-        weights *  dnbinom(x,  dispersion, mu = mu, log = log_),
+      negbinom = function(x, mu, weights, dispersion = 1)
+        weights *  dnbinom(x,  1/(factor_family$variance(1)-1), mu = mu, log = log_),
       Gamma = function(x, mu, weights, dispersion)
         weights *  dgamma(
           x,
-          shape =  dispersion,
-          scale = mu / dispersion,
+          shape =  1/dispersion,
+          scale = mu * dispersion,
           log = log_
         ),
       stop("Family `", family$family, "` not recognized")
     )
     return (family_pdf)
   }
+
+check_DispersionUpdate <- function(family){
+    update_families = c('quasipoisson', 'quasibinomial', 'Gaussian', 'Gamma')
+    if (family$family %in% update_families){
+      return (TRUE)
+    }
+    return (FALSE)
+}
 
 
 gsym_solve <- function (A, b, tol = sqrt(.Machine$double.eps)) {
@@ -109,16 +136,13 @@ Lapl_grad <- function(X_batch, Vt, factor_family, weights, dispersion, center, q
   v = factor_family$variance(mu_mle); dim(v) = dim(eta_mle)
   scales = (mu_mle - X_batch) * weights * g/v
 
-  scale_dispersion =  sweep((mu_mle - X_batch)^2/v, 2, dispersion, '/') - 1
-  #scale_dispersion =  1 - (mu_mle - X_batch)^2/v
+  scale_dispersion =  1 - sweep(weights * (mu_mle - X_batch)^2 / v, 2, dispersion, '/')
 
 
   scales = sweep(scales, 2, dispersion, '/')
   grad_V = t(crossprod(scales, L_mle))
   grad_center = colSums(scales)
-  grad_dispersion = colSums(-sweep(scale_dispersion * weights, 2, dispersion * 2, '/'))
-  #grad_dispersion = colSums(-scale_dispersion * weights/2)
-  #browser()
+  grad_dispersion = colSums(sweep(scale_dispersion, 2, dispersion * 2, '/'))
 
   return(list(grad_V = grad_V, grad_center = grad_center, grad_dispersion = grad_dispersion))
 }
@@ -177,8 +201,8 @@ PosSample_Moments <-function(LX_row, Vt, center, factor_family, dispersion, weig
   mu_row =  factor_family$linkinv(eta_row)
   var_row = factor_family$variance(mu_row)
 
-  var_row = sweep(var_row, 2, weights , '*')
-  hessian_L = 1/dispersion * crossprod(sweep(Vt, 1, var_row, "*"), Vt)
+  std_row = sqrt(sweep(var_row, 2, weights/dispersion , '*')) #todo: check derivation of hessian
+  hessian_L = crossprod(sweep(Vt, 1, std_row, "*"), Vt)
 
   L_pos = matrix(tcrossprod(ginv(ginv(hessian_L) + diag(1, nrow= q)), L_row), ncol=1)
   Sigma_pos = ginv(diag(1, nrow= q) + hessian_L) + diag(1e-08, nrow = q)
@@ -190,6 +214,7 @@ PosSample_GradRowV <- function(L_row, X_row, center, weight_row, Vt, factor_fami
 
   d = dim(Vt)[1];q = dim(Vt)[2]
   LX_row = c(L_row, X_row)
+
   Pos_moments <- PosSample_Moments(LX_row = LX_row, Vt = Vt,
                                    center = center,
                                    factor_family = factor_family,
@@ -211,6 +236,28 @@ PosSample_GradRowV <- function(L_row, X_row, center, weight_row, Vt, factor_fami
   return( grad_v)
 }
 
+PosSample_GradRowPhi <- function(L_row, X_row, center, weight_row, Vt, factor_family, dispersion, sample_size){
+
+  d = dim(Vt)[1]; q = dim(Vt)[2]
+  LX_row = c(L_row, X_row)
+  Pos_moments <- PosSample_Moments(LX_row = LX_row, Vt = Vt,
+                                   center = center,
+                                   factor_family = factor_family,
+                                   dispersion = dispersion,
+                                   weights = weight_row)
+  L_sample <- PosSample_Draw(Pos_moments, sample_size)
+
+  eta_pos = tcrossprod(L_sample, Vt)
+  eta_pos = sweep(eta_pos, 2, center, "+")
+  mu_pos = factor_family$linkinv(eta_pos)
+  var_pos = factor_family$variance(mu_pos)
+
+  scales = -sweep(mu_pos, 2, X_row, '-')
+  scales = 1 - sweep(scales^2, 2, dispersion/weight_row, '/')
+  scales = sweep(scales, 2, dispersion, '/')
+  grad_phi = colMeans(scales)
+  return(c(grad_phi))
+}
 
 PosSample_GradRowCenter <- function(L_row, X_row, center, weight_row, Vt, factor_family, dispersion, sample_size){
 
@@ -266,9 +313,20 @@ PosSample_grad <-function(X_batch, Vt, center, factor_family, dispersion, weight
                 MoreArgs = list(Vt = Vt, factor_family = factor_family,
                                 dispersion = dispersion, sample_size = sample_size,
                                 center = center))
-
   grad_center = matrix(rowSums(grad_center), ncol = d)
-  return (list(grad_V = grad_v, grad_center = grad_center))
+
+
+  grad_dispersion = mapply(PosSample_GradRowPhi,
+                       L_row = asplit(L_mle, 1),
+                       X_row = asplit(X_batch, 1),
+                       weight_row = asplit(weights, 1),
+                       MoreArgs = list(Vt = Vt, factor_family = factor_family,
+                                       dispersion = dispersion, sample_size = sample_size,
+                                       center = center))
+
+
+  grad_dispersion = matrix(rowSums(grad_dispersion), ncol = d)
+  return (list(grad_V = grad_v, grad_center = grad_center, grad_dispersion = grad_dispersion))
 }
 
 

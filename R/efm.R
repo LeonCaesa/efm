@@ -34,7 +34,7 @@ generate_data <-
       poisson = rpois(y_len, mu),
       quasipoisson = rqpoisson(y_len, mu, dispersion),
       binomial = rbinom(y_len, weights, mu),
-      Gamma = rgamma(y_len , shape =  dispersion, scale = mu /  dispersion),
+      Gamma = rgamma(y_len , shape =  1/dispersion, scale = mu * dispersion), # V(x) = dispersion * mean(x)^2
       negative.binomial = rnegbin(y_len, mu = mu, theta =  dispersion),
       stop("family `", family$family, "` not recognized")
     )
@@ -107,11 +107,13 @@ SML_neglikeli <- function(Vt,
                           print_likeli = TRUE,
                           log_ = TRUE) {
   n <- dim(X)[1]; p <- dim(X)[2]; q <- dim(Vt)[2]
+  if(length(dispersion) ==1){dispersion = rep(dispersion, p)}
   Vt <- matrix(Vt, nrow = p, ncol = q)
   likeli_simu  <- matrix(0, nrow = n, ncol = sample_size)
   family_pdf <-
     pdf_calc(
-      factor_family,
+      family = factor_family,
+      dispersion = dispersion,
       weights = weights,
       log_ = log_
     )
@@ -129,7 +131,7 @@ SML_neglikeli <- function(Vt,
   }
   neg_likeli = -sum(rowLogSumExps(likeli_simu) - log(sample_size))
   if (print_likeli) {
-    print(neg_likeli)
+    print(paste('loss(negative quasi-likelihood) is', neg_likeli))
   }
   return(neg_likeli)
 }
@@ -224,6 +226,9 @@ efm <- function(x,
                 sample_control = sample.control(sample_size = 50, eval_size = 50),
                 eval_likeli = FALSE,
                 identify_ = FALSE) {
+  phi_flag = check_DispersionUpdate(factor_family)
+  if(phi_flag == FALSE){dispersion = 1}
+
   n <- nrow(x); p <- ncol(x)
   rank <- as.integer(rank)
   if (rank <= 0)
@@ -244,6 +249,9 @@ efm <- function(x,
   dim(weights) <- dim(x)
 
   if (length(dispersion) ==1)(dispersion = rep(dispersion, p))
+  dispersion[dispersion<=0] = 0.1
+
+
 
   if (is.null(start)) {
     # [ initialize through SVD]
@@ -257,6 +265,9 @@ efm <- function(x,
     if (nrow(Vt) != p || ncol(Vt) != rank)
       stop("dimensions of V are inconsistent")
   }
+
+
+
 
   v_dv = matrix(0, nrow = rank, ncol = p); s_dv = matrix(0, nrow = rank, ncol = p)
   v_dcenter = matrix(0, ncol = p); s_dcenter = matrix(0, ncol = p)
@@ -324,17 +335,23 @@ efm <- function(x,
       center_update = lr_schedule * vhat_dcenter / (sqrt(shat_dcenter) + adam_control$epsilon)
       dispersion_update = lr_schedule * vhat_dphi / (sqrt(shat_dphi) + adam_control$epsilon)
 
-
-      # Vt = Vt - Vt_update
+      Vt = Vt - Vt_update
       # center = center - center_update
-      dispersion = dispersion - dispersion_update
-      invalid_flag = dispersion<0
-      dispersion[invalid_flag] = 0.1
+      # # print(paste('center update at', adam_t))
+      # # print(-center_update)
+      # print(paste('center dist at', adam_t, mean((center - center_star)^2)))
 
-      print(paste('dispersion update at', adam_t))
-      print(-dispersion_update)
-      print(paste('dispersion at', adam_t))
-      print(dispersion)
+
+      # if (phi_flag == TRUE){
+      # dispersion = dispersion - c(dispersion_update)
+      # invalid_flag = dispersion<0
+      # dispersion[invalid_flag] = 0.1
+      # # # print(paste('dispersion update at', adam_t))
+      # # # print(-dispersion_update)
+      # # print(paste('dispersion dist at', adam_t, mean((dispersion - dispersion_star)^2)))
+      # }
+
+
 
       #[Identifiability]
       if (identify_) {
