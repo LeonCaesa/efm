@@ -269,7 +269,7 @@ efm <- function(x,
 
 
 
-  v_dv = matrix(0, nrow = rank, ncol = p); s_dv = matrix(0, nrow = rank, ncol = p)
+  v_dv = matrix(0, nrow = p, ncol = rank); s_dv = matrix(0, nrow = p, ncol = rank)
   v_dcenter = matrix(0, ncol = p); s_dcenter = matrix(0, ncol = p)
   v_dphi = matrix(0, ncol = p); s_dphi = matrix(0, ncol = p)
   like_list <- rep(0, adam_control$max_epoch * as.integer(n / adam_control$batch_size))
@@ -309,6 +309,7 @@ efm <- function(x,
 
       grad = lapply(grad, "*" ,n / adam_control$batch_size)
 
+
       # [Adam lr decay]
       adam_t = (epoch - 1) * as.integer(n / adam_control$batch_size) + k
       lr_schedule = adam_control$step_size / (1 + 0.1 * adam_t ^ adam_control$rho)
@@ -331,25 +332,26 @@ efm <- function(x,
       vhat_dphi = v_dphi / (1 - adam_control$beta1 ^ adam_t)
       shat_dphi = s_dphi / (1 - adam_control$beta2 ^ adam_t)
 
-      Vt_update =  lr_schedule * t(vhat_dv / (sqrt(shat_dv) + adam_control$epsilon))
+      Vt_update =  lr_schedule * vhat_dv / (sqrt(shat_dv) + adam_control$epsilon)
       center_update = lr_schedule * vhat_dcenter / (sqrt(shat_dcenter) + adam_control$epsilon)
       dispersion_update = lr_schedule * vhat_dphi / (sqrt(shat_dphi) + adam_control$epsilon)
 
+      # [Update steps]
       Vt = Vt - Vt_update
-      # center = center - center_update
+      center = center - center_update
       # # print(paste('center update at', adam_t))
       # # print(-center_update)
       # print(paste('center dist at', adam_t, mean((center - center_star)^2)))
 
 
-      # if (phi_flag == TRUE){
-      # dispersion = dispersion - c(dispersion_update)
-      # invalid_flag = dispersion<0
-      # dispersion[invalid_flag] = 0.1
-      # # # print(paste('dispersion update at', adam_t))
-      # # # print(-dispersion_update)
-      # # print(paste('dispersion dist at', adam_t, mean((dispersion - dispersion_star)^2)))
-      # }
+      if (phi_flag == TRUE){
+      dispersion = dispersion - c(dispersion_update)
+      invalid_flag = dispersion<0
+      dispersion[invalid_flag] = 0.1
+      # # print(paste('dispersion update at', adam_t))
+      # # print(-dispersion_update)
+      # print(paste('dispersion dist at', adam_t, mean((dispersion - dispersion_star)^2)))
+      }
 
 
 
