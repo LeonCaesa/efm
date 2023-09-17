@@ -2,6 +2,111 @@ norm2 <- function (x) norm(as.matrix(x[!is.na(x)]), "2")
 normalize <- function (x, margin = 2)
   sweep(x, margin, apply(x, margin, norm2), `/`)
 
+mat_mult <- function (A, b, mult_cond = is.vector(A))
+  if (mult_cond) A * b else A %*% b
+
+mat_add <- function (A, B, add_cond = is.vector(A)) {
+  if (add_cond) diag(B) <- diag(B) + A else B <- B + A
+  B
+}
+
+# "Robust" eigendecomposition of symmetric matrix A
+symm_eigen <- function (A, rank_tol = sqrt(.Machine$double.eps)) {
+  ea <- eigen(A, symmetric = TRUE)
+  V <- ea$vectors; d <- ea$values
+  valid <- ea$values > max(rank_tol * ea$values[1], 0)
+  if (!all(valid)) {
+    ea$vectors <- ea$vectors[, valid, drop = FALSE]
+    ea$values <- ea$values[valid]
+  }
+  ea
+}
+
+# If a symmetric matrix A has eigen decomposition
+# A = V * D * V' = (D_2 * V')' * (D_2 * V') = C' * C,
+# where D_2 = D^(1/2) and C = D_2 * V',
+# performs one of the following operations:
+# solve = FALSE, transpose = FALSE: C * b = D_2 * V' * b
+# solve = FALSE, transpose = TRUE: C' * b =  V * D_2 * b
+# solve = TRUE, transpose = FALSE: C^(-1) * b = V * D_2^(-1) * b
+# solve = TRUE, transpose = TRUE: C'^(-1) * b = D_2^(-1) * V' * b
+symm_mult <- function (ea, b, solve = FALSE, transpose = FALSE) {
+  d_2 <- sqrt(ea$values)
+  if (!xor(solve, transpose)) # apply V' first?
+    sweep(crossprod(ea$vectors, b), 1, d_2, ifelse(solve, `/`, `*`))
+  else
+    ea$vectors %*% sweep(b, 1, d_2, ifelse(solve, `/`, `*`))
+}
+
+bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
+                   start = NULL, family = gaussian(), dispersion = 1,
+                   control = list()) {
+  control <- do.call("glm.control", control)
+  nobs <- nrow(x); nvars <- ncol(x)
+  if (is.null(weights)) weights <- rep.int(1, nobs)
+  if (is.null(offset)) offset <- rep.int(0, nobs)
+  # [ initialize ]
+  if (!is.null(start)) {
+    eta <- drop(if (nvars == 1L) x * start else x %*% start)
+  } else {
+    if (family$family == "gaussian") etastart <- 1
+    eval(family$initialize)
+    eta <- family$linkfun(mustart)
+  }
+  eta <- eta + offset; mu <- family$linkinv(eta)
+  beta0 <- mat_mult(prior_coef$precision, drop(prior_coef$mean))
+  dev <- Inf
+  # [ iterate ]
+  for (it in 1:control$maxit) {
+    varmu <- family$variance(mu)
+    W <- weights * varmu / dispersion
+    residuals <- weights * (y - mu) / dispersion
+    if (!check_canonical(family)) { # adjust weights?
+      thetaeta <- family$mu.eta(eta) / varmu
+      W <- W * thetaeta ^ 2
+      residuals <- residuals * thetaeta
+    }
+    z <- crossprod(x, W * (eta - offset) + residuals) + beta0
+    H <- mat_add(prior_coef$precision, crossprod(x, x * W)) # Hessian
+    eh <- symm_eigen(H)
+    beta <- gsym_solve(eh, z)
+    eta <- drop(mat_mult(x, beta, nvars == 1)) + offset
+    mu <- family$linkinv(eta)
+    bd <- beta - prior_coef$mean
+    dev_new <- sum(family$dev.resids(y, mu, weights)) +
+      sum(bd * mat_mult(prior_coef$precision, bd)) * dispersion # FIXME: check
+    if (control$trace) message("<", it, "> dev = ", dev_new)
+    if (it > 1 && abs((dev_new - dev) / (dev + .1)) < control$epsilon) break
+    dev <- dev_new
+  }
+  list(coef = beta, hessian = eh, deviance = dev)
+}
+
+
+
+#' @export
+#' Var(X) = E_L[Var(X|L) + Var(E(X|L))]
+marg_var <- function (center, V, family, ngq = 15, ...) {
+  if (!is.vector(center)) center = c(center)
+  gq <- gaussquadr::GaussQuad$new("gaussian", ngq, ncol(V), ...)
+  fam <- if (is.function(family)) family() else family
+  ev <- gq$E(function (l) fam$variance(fam$linkinv(center + V %*% l)))
+  mv <- gq$E(function (l) fam$linkinv(center + V %*% l))
+  ve <- gq$E(function (l) tcrossprod(fam$linkinv(center + V %*% l) - mv))
+  matrix(ve, nrow = nrow(V)) + diag(ev) # question: why add diagonal?
+}
+
+
+check_canonical <- function (fam) {
+  ((!is.null(fam$linkcan)) && fam$linkcan) ||
+    ((fam$family == "poisson" || fam$family == "quasipoisson") &&
+       fam$link == "log") ||
+    ((fam$family == "binomial" || fam$family == "quasibinomial") &&
+       fam$link == "logit") ||
+    (fam$family == "gaussian" && fam$link == "identity")
+}
+
+
 dquasipois <- function(x, mu, dispersion, log = TRUE){
   var <- dispersion * mu
   #add_const <- x - x * log(x)
@@ -71,6 +176,10 @@ gsym_solve <- function (A, b, tol = sqrt(.Machine$double.eps)) {
   V %*% sweep(crossprod(V, b), 1, d, `/`)
 }
 
+# solve A * x = b, where A is symmetric with eigendecomposition
+# A = V * diag(d) * V' stored in `ea <- symm_eigen(A)`
+gsym_solve_bsglm<- function (ea, b)
+  drop(ea$vectors %*% sweep(crossprod(ea$vectors, b), 1, ea$values, `/`))
 
 
 comput_mupos = function(L_row, Vt, factor_family, scale_weights = 1) {
@@ -105,7 +214,7 @@ simu_pos = function(mu_pos, CholSigma, sample_size = 1){
 }
 
 
-# [gradient calculation --- Laplacian]
+# [gradient calculation --- Laplacian (depreciated)]
 ridge_coef <- function(X_vec, weight_vec, Vt, center, factor_family){
   d = dim(Vt)[1]
   sd_scalar = sqrt(var(X_vec)*(d-1)/d)
@@ -120,15 +229,75 @@ ridge_coef <- function(X_vec, weight_vec, Vt, center, factor_family){
 }
 
 
+bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
+                   start = NULL, family = gaussian(), dispersion = 1,
+                   control = list()) {
+  control <- do.call("glm.control", control)
+  nobs <- nrow(x); nvars <- ncol(x)
+  if (is.null(weights)) weights <- rep.int(1, nobs)
+  if (is.null(offset)) offset <- rep.int(0, nobs)
+  # [ initialize ]
+  if (!is.null(start)) {
+    eta <- drop(if (nvars == 1L) x * start else x %*% start)
+  } else {
+    if (family$family == "gaussian") etastart <- 1
+    eval(family$initialize)
+    eta <- family$linkfun(mustart)
+  }
+  eta <- eta + offset; mu <- family$linkinv(eta)
+  beta0 <- mat_mult(prior_coef$precision, drop(prior_coef$mean))
+  dev <- Inf
+  # [ iterate ]
+  for (it in 1:control$maxit) {
+    varmu <- family$variance(mu)
+    W <- weights * varmu / dispersion
+    residuals <- weights * (y - mu) / dispersion
+    if (!check_canonical(family)) { # adjust weights?
+      thetaeta <- family$mu.eta(eta) / varmu
+      W <- W * thetaeta ^ 2
+      residuals <- residuals * thetaeta
+    }
+    z <- crossprod(x, W * (eta - offset) + residuals) + beta0
+    H <- mat_add(prior_coef$precision, crossprod(x, x * c(W))) # Hessian
+    eh <- symm_eigen(H)
+    beta <- gsym_solve_bsglm(eh, z)
+    eta <- drop(mat_mult(x, beta, nvars == 1)) + offset
+    mu <- family$linkinv(eta)
+    bd <- beta - prior_coef$mean
+    dev_new <- sum(family$dev.resids(y, mu, weights)/dispersion) +
+      sum(bd * mat_mult(prior_coef$precision, bd))  # FIXME: check
+    if (control$trace) message("<", it, "> dev = ", dev_new)
+    if (it > 1 && abs((dev_new - dev) / (dev + .1)) < control$epsilon) break
+    dev <- dev_new
+  }
+  return(beta)
+  #list(coef = beta, hessian = eh, deviance = dev)
+}
 
 Lapl_grad <- function(X_batch, Vt, factor_family, weights, dispersion, center, q = dim(Vt)[2]){
 
   n <- dim(X_batch)[1]; d <- dim(X_batch)[2]
   Vt <- matrix(Vt, nrow = d, ncol =q)
 
-  L_mle <- t(mapply(ridge_coef, X_vec = asplit(X_batch, 1),
-                   weight_vec = asplit(weights, 1),
-                   MoreArgs = list(Vt = Vt, factor_family = factor_family, center = c(center))))
+  # start = Sys.time()
+  # weights_modify = sweep(weights, 2, dispersion, '/')
+  # L_mle <- t(mapply(ridge_coef, X_vec = asplit(X_batch, 1),
+  #                   weight_vec = asplit(weights_modify, 1),
+  #                   MoreArgs = list(Vt = Vt, factor_family = factor_family, center = c(center))))
+  # end = Sys.time()
+  # print(end- start)
+
+  # start = Sys.time()
+  lambda_prior <- list(mean = rep(0, q), precision = rep(1, q))
+  L_mle = t(mapply(bsglm, y = asplit(X_batch, 1),
+           weights = asplit(weights, 1),
+           MoreArgs = list(x = Vt, prior_coef = lambda_prior, dispersion = dispersion,
+                           family = factor_family, offset = c(center))
+           ))
+  # end = Sys.time()
+  # print(end- start)
+
+
   eta_mle <- sweep(tcrossprod(L_mle, Vt), 2 , center, '+')
   mu_mle <- factor_family$linkinv(eta_mle)
   g <- factor_family$mu.eta(eta_mle); dim(g) <- dim(eta_mle)
@@ -152,7 +321,6 @@ Lapl_grad <- function(X_batch, Vt, factor_family, weights, dispersion, center, q
 SML_grad <- function(Vt, factor_family, X, q, center, sample_size, dispersion = 1, weights = 1){
   n <- dim(X)[1]; d <- dim(X)[2]
   Vt <- matrix(Vt, nrow = d, ncol = q)
-  #browser()
   family_pdf <- pdf_calc(factor_family, weights = weights, dispersion = dispersion, log_ = TRUE)
 
   likeli_simu <- array(dim = c(n, d, sample_size))

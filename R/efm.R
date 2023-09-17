@@ -1,6 +1,5 @@
 # [ Exponential Factor Model ]
 #' @importFrom MASS ginv rnegbin
-#' @importFrom glmnet glmnet
 #' @importFrom stats coef dbinom dgamma dnbinom dnorm dpois gaussian rgamma rnorm rpois var rbinom
 #' @importFrom matrixStats logSumExp rowLogSumExps
 NULL
@@ -267,8 +266,6 @@ efm <- function(x,
   }
 
 
-
-
   v_dv = matrix(0, nrow = p, ncol = rank); s_dv = matrix(0, nrow = p, ncol = rank)
   v_dcenter = matrix(0, ncol = p); s_dcenter = matrix(0, ncol = p)
   v_dphi = matrix(0, ncol = p); s_dphi = matrix(0, ncol = p)
@@ -308,7 +305,6 @@ efm <- function(x,
       )
 
       grad = lapply(grad, "*" ,n / adam_control$batch_size)
-
 
       # [Adam lr decay]
       adam_t = (epoch - 1) * as.integer(n / adam_control$batch_size) + k

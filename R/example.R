@@ -5,7 +5,7 @@ library(matrixStats)
 library(glmnet)
 # [4.1 simulated data]
 set.seed(1)
-d = 200
+d = 20
 n = 500
 q = 2
 dispersion_star = 2
@@ -46,12 +46,14 @@ plot(density(X))
 
 
 Vstart = svd(X, nu = q, nv = q)$v
+
+center_start = center_star + rnorm(d, 0, 1)
+dispersion_start = rnorm(d, 0, dispersion_star/3)
+dispersion_start = dispersion_start - min(dispersion_start)
+
+# [initialize at the true]
 # Vstart = V_star
 # center_start = center_star
-center_start = center_star + rnorm(d, 0, 1)
-#dispersion_start = c(1,2,5,5,5)
-dispersion_start = rnorm(d, 0, 1)
-dispersion_start = dispersion_start + min(dispersion_start) + 0.1
 # dispersion_start = rep(dispersion_star, d)
 
 true_likeli <- SML_neglikeli(V_star, factor_family, X, center = center_star, sample_control$eval_size,
@@ -62,9 +64,21 @@ lapl_result <- efm(X/factor_weights, factor_family, center = center_start, rank 
                   sample_control = sample_control, eval_likeli = TRUE)
 
 
-#lapl_result = efm_batch(Vstart, adam_control$batch_size, adam_control$step_size, X , factor_family, algo = 'lapl', eval_likeli = TRUE, eval_size =sample_control$sample_size)
-print('done')
+# [Param comparison]
+plot(lapl_result$like_list)
+cbind(dispersion_start, lapl_result$dispersion, dispersion_star)
+matrix(cbind(center_start, lapl_result$center, center_star), ncol = 3)
+cbind(Vstart, lapl_result$V, V_star)
 
+
+# [Covariance comparison]
+num_esti_cov = cov(X)
+efm_esti_cov = marg_var(lapl_result$center, lapl_result$V, lapl_result$family, ngq = 15)
+efm_true_cov = marg_var(center_star, V_star, lapl_result$family, ngq = 15)
+
+
+plot(density(num_esti_cov- efm_true_cov))
+points(density(efm_esti_cov- efm_true_cov), col = 'red')
 
 
 
