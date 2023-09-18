@@ -29,8 +29,17 @@ factor_weights = 1
 
 
 # [generate data]
+prior_star = list(mean = rep(0, q),
+     precision = rep(3, q))
+
 V_star = matrix(rnorm(q*d, 0, 0.5), nrow = d)
-L_star = matrix(rnorm(n*q, 0, 0.5), nrow = n)
+#L_star = matrix(rnorm(n*q, 0, 0.5), nrow = n)
+#L_star = matrix(rnorm(n*q, 0, 0.5), nrow = n)
+L_star <- mvtnorm::rmvnorm(n, mean = prior_star$mean,
+                             sigma = diag(1/prior_star$precision),
+                             checkSymmetry = TRUE)
+
+
 svd_star = svd(V_star, nu = q, nv = q)
 negative_flag = c(1:q)[svd_star$u[1,]<0]
 svd_star$u = efm_sign(svd_star$u)
@@ -41,7 +50,8 @@ L_star = tcrossprod(L_star, svd_star$v)
 center_star = matrix(0, ncol = d)
 eta_star = tcrossprod(L_star, V_star)
 eta_star = sweep(eta_star, 2, center_star, '+')
-X = generate_data(family= factor_family, eta = eta_star, dispersion = dispersion_star, weights = factor_weights)
+X = generate_data(family= factor_family, eta = eta_star,
+                  dispersion = dispersion_star, weights = factor_weights)
 plot(density(X))
 
 
@@ -59,9 +69,25 @@ dispersion_start = dispersion_start - min(dispersion_start)
 true_likeli <- SML_neglikeli(V_star, factor_family, X, center = center_star, sample_control$eval_size,
                              dispersion = dispersion_star, weights = factor_weights, print_likeli = TRUE)
 
-lapl_result <- efm(X/factor_weights, factor_family, center = center_start, rank = q, factor_weights, algo = 'lapl', start = Vstart,
-                  adam_control = adam_control, dispersion = dispersion_start,
-                  sample_control = sample_control, eval_likeli = TRUE)
+
+# [EM Newton]
+ngq <- 15
+control <- list(maxit = 20, epsilon = 1e-6, trace = TRUE)
+res <- fa_gqem(X, q, ngq, family =factor_family, control = control)
+cbind(res$alpha, res$V, c(center_star), V_star)
+cov(X); cor(X)
+(cx <- marg_var(res$alpha, res$V, res$family, ngq)); cov2cor(cx)
+
+
+# [Gradient]
+lapl_result <- efm(X/factor_weights, factor_family,
+                  center = center_start, rank = q,
+                  factor_weights, algo = 'lapl', start = Vstart,
+                  adam_control = adam_control,
+                  dispersion = dispersion_start,
+                  sample_control = sample_control, eval_likeli = TRUE,
+                  lambda_prior = prior_star)
+
 
 
 # [Param comparison]
@@ -77,8 +103,11 @@ efm_esti_cov = marg_var(lapl_result$center, lapl_result$V, lapl_result$family, n
 efm_true_cov = marg_var(center_star, V_star, lapl_result$family, ngq = 15)
 
 
-plot(density(num_esti_cov- efm_true_cov))
-points(density(efm_esti_cov- efm_true_cov), col = 'red')
+mse_efm = mean((efm_esti_cov- efm_true_cov)^2)
+mse_num = mean((num_esti_cov- efm_true_cov)^2)
+print(mse_efm)
+print(mse_num)
+
 
 
 

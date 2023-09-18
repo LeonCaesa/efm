@@ -213,6 +213,8 @@ efm <- function(x,
                 start = NULL,
                 dispersion = 1,
                 center = matrix(0, ncol = ncol(x)),
+                lambda_prior = list(mean = rep(0, q),
+                                    precision = rep(1, q)),
                 adam_control = adam.control(
                   max_epoch = 5,
                   batch_size = 32,
@@ -280,7 +282,12 @@ efm <- function(x,
       # [Finding gradient moment using posterior Lambda]
       grad <- switch(
         algo,
-        lapl = Lapl_grad(X_batch = x_batch, Vt = Vt, factor_family = factor_family, weights = weight_batch, dispersion = dispersion, center = center),
+        lapl = Lapl_grad(X_batch = x_batch,
+                         Vt = Vt, factor_family = factor_family,
+                         weights = weight_batch,
+                         dispersion = dispersion,
+                         center = center,
+                         lambda_prior = lambda_prior),
         sml = SML_grad(
           Vt = Vt,
           factor_family = factor_family,
@@ -289,9 +296,9 @@ efm <- function(x,
           center = center,
           sample_size = sample_control$sample_size,
           dispersion = dispersion,
-          weights = weight_batch
+          weights = weight_batch,
+          lambda_prior = lambda_prior
         ),
-        fastgaussian = FastGaussian_grad(x_batch, Vt, factor_family, dispersion, weight_batch),
         ps = PosSample_grad(
           X_batch = x_batch,
           Vt = Vt,
@@ -299,7 +306,8 @@ efm <- function(x,
           factor_family = factor_family,
           dispersion = dispersion,
           weights = weight_batch,
-          sample_size = sample_control$sample_size
+          sample_size = sample_control$sample_size,
+          lambda_prior = lambda_prior
         ),
         stop("Algo `", algo, "` not recognized")
       )
@@ -310,6 +318,7 @@ efm <- function(x,
       adam_t = (epoch - 1) * as.integer(n / adam_control$batch_size) + k
       lr_schedule = adam_control$step_size / (1 + 0.1 * adam_t ^ adam_control$rho)
 
+      # Question: optimize v_dv, v_dcenter, v_dphi etc
       # [Adam V step]
       v_dv = adam_control$beta1 * v_dv + (1 - adam_control$beta1) * grad$grad_V
       s_dv = adam_control$beta2 * s_dv + (1 - adam_control$beta2) * grad$grad_V^2
@@ -400,3 +409,80 @@ efm <- function(x,
   ))
 
 } # end of function
+
+
+
+fa_gqem <- function (X, q, ngq, family = gaussian(), control = list(), ...) {
+  control <- do.call("glm.control", control)
+  fam <- if (is.function(family)) family() else family
+  # initialize
+  y <- c(X); nobs <- length(y); weights <- rep(1, nobs); etastart <- 1
+  eval(fam$initialize)
+  n <- nrow(X); p <- ncol(X)
+  x <- matrix(fam$linkfun(mustart), nrow = n)
+  x <- scale(x, scale = FALSE) # center
+  S <- cov(x) # more robust, instead of `crossprod(x) / n`
+  # [ init ]
+  alpha <- attr(x, "scaled:center")
+  ss <- symm_eigen(S)
+  V <- sweep(ss$vectors[, 1:q, drop = FALSE], 2, sqrt(ss$values[1:q]), `*`)
+  Phi <- rep(1, p) # TODO: fit dispersions in quasi families
+
+  gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
+  m <- length(gq$weights)
+  lambda_prior <- list(mean = rep(0, q), precision = rep(1, q))
+  L <- matrix(nrow = n * m, ncol = q)
+  iw <- numeric(n * m)
+  S <- matrix(nrow = n * m, ncol = p)
+  lw_ref <- -.5 * apply(gq$nodes, 1, function (v) sum(v ^ 2))
+  for (it in 1:control$maxit) {
+    # [ E-step: lambda | x ]
+    for (i in 1:n) { # question: apply faster than 1:n?
+      bs <- bsglm(V, X[i, ], lambda_prior, offset = alpha, family = fam, dispersion = Phi)
+      bs$hessian$values <- 1 / bs$hessian$values # invert first
+      gi <- gq$clone()$location_scale(bs$coef, bs$hessian, squared = TRUE)
+      # refine weights with importance
+      mu <- fam$linkinv(tcrossprod(V, gi$nodes) + alpha)
+      devi <- apply(mu, 2,
+                    function (mui) sum(fam$dev.resids(X[i,], mui, rep(1, p))))
+      devi <- devi + apply(gi$nodes, 1, function (v) sum(v ^ 2)) # question: why add again v^2?
+      gi$reweight(-.5 * devi - lw_ref, log_weights = TRUE, normalize = TRUE)
+      L[(i - 1) * m + 1:m, ] <- gi$nodes
+      iw[(i - 1) * m + 1:m] <- gi$weights
+      S[(i - 1) * m + 1:m,] <- tcrossprod(gi$weights, bs$diag_s)
+    }
+    # [ M-step: fit alpha and V ]
+
+    dev_new <- 0
+    Lo <- cbind(1, L)
+    for (j in 1:p) {
+      # xj <- kronecker(X[, j], rep(1, m))
+      # gmc <- glm(xj ~ L, family = fam, weights = iw)
+      # alpha[j] <- gmc$coef[1]; V[j, ] <- gmc$coef[-1]
+      # dev_new <- dev_new + gmc$deviance
+
+      xj <- kronecker(X[, j], rep(1, m))
+      LL <- sweep(Lo, 1, S[,j], '*')
+      H <- crossprod(LL, Lo)
+      eh <- symm_eigen(H)
+
+      eta_jm <- c(tcrossprod(L, V[j,, drop = FALSE])) + alpha[j]
+      mu_jm <- family$linkinv(eta_jm)
+      z_jm <- eta_jm + (xj - mu_jm) /family$mu.eta(eta_jm)
+      b_jm <- crossprod(LL, z_jm)
+
+      beta <- gsym_solve_bsglm(eh, b_jm)
+      alpha[j] <- beta[1]; V[j,] <- beta[-1]
+      dev_new <- dev_new + sum(family$dev.resids(xj, mu_jm, wt = iw))
+
+    }
+    if (control$trace) {
+      message("[", it, "] dev = ", dev_new)
+      #if (control$verbose) print(cbind(alpha, V))
+    }
+    if (it > 1 && abs((dev_new - dev) / (dev + .1)) < control$epsilon) break
+    dev <- dev_new
+  }
+  sv <- svd(V, nv = 0); V <- sweep(sv$u, 2, sv$d * sign(sv$u[1,]), `*`)
+  list(alpha = alpha, V = V, family = fam, ngq = ngq, deviance = dev)
+}

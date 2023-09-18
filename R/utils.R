@@ -38,49 +38,6 @@ symm_mult <- function (ea, b, solve = FALSE, transpose = FALSE) {
     ea$vectors %*% sweep(b, 1, d_2, ifelse(solve, `/`, `*`))
 }
 
-bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
-                   start = NULL, family = gaussian(), dispersion = 1,
-                   control = list()) {
-  control <- do.call("glm.control", control)
-  nobs <- nrow(x); nvars <- ncol(x)
-  if (is.null(weights)) weights <- rep.int(1, nobs)
-  if (is.null(offset)) offset <- rep.int(0, nobs)
-  # [ initialize ]
-  if (!is.null(start)) {
-    eta <- drop(if (nvars == 1L) x * start else x %*% start)
-  } else {
-    if (family$family == "gaussian") etastart <- 1
-    eval(family$initialize)
-    eta <- family$linkfun(mustart)
-  }
-  eta <- eta + offset; mu <- family$linkinv(eta)
-  beta0 <- mat_mult(prior_coef$precision, drop(prior_coef$mean))
-  dev <- Inf
-  # [ iterate ]
-  for (it in 1:control$maxit) {
-    varmu <- family$variance(mu)
-    W <- weights * varmu / dispersion
-    residuals <- weights * (y - mu) / dispersion
-    if (!check_canonical(family)) { # adjust weights?
-      thetaeta <- family$mu.eta(eta) / varmu
-      W <- W * thetaeta ^ 2
-      residuals <- residuals * thetaeta
-    }
-    z <- crossprod(x, W * (eta - offset) + residuals) + beta0
-    H <- mat_add(prior_coef$precision, crossprod(x, x * W)) # Hessian
-    eh <- symm_eigen(H)
-    beta <- gsym_solve(eh, z)
-    eta <- drop(mat_mult(x, beta, nvars == 1)) + offset
-    mu <- family$linkinv(eta)
-    bd <- beta - prior_coef$mean
-    dev_new <- sum(family$dev.resids(y, mu, weights)) +
-      sum(bd * mat_mult(prior_coef$precision, bd)) * dispersion # FIXME: check
-    if (control$trace) message("<", it, "> dev = ", dev_new)
-    if (it > 1 && abs((dev_new - dev) / (dev + .1)) < control$epsilon) break
-    dev <- dev_new
-  }
-  list(coef = beta, hessian = eh, deviance = dev)
-}
 
 
 
@@ -181,7 +138,8 @@ gsym_solve <- function (A, b, tol = sqrt(.Machine$double.eps)) {
 gsym_solve_bsglm<- function (ea, b)
   drop(ea$vectors %*% sweep(crossprod(ea$vectors, b), 1, ea$values, `/`))
 
-
+# [method for experiment generation]
+# todo: add prior support
 comput_mupos = function(L_row, Vt, factor_family, scale_weights = 1) {
   q = dim(Vt)[2]
   d = dim(Vt)[1]
@@ -209,7 +167,8 @@ comput_CholSigma = function(L_row, Vt, factor_family, scale_weights = 1){
 
 simu_pos = function(mu_pos, CholSigma, sample_size = 1){
   q = length(mu_pos)
-  simu_temp = tcrossprod(CholSigma, matrix(rnorm(sample_size * q), nrow = sample_size))
+  simu_temp = tcrossprod(CholSigma, matrix(rnorm(sample_size * q),
+                                           nrow = sample_size))
   return( sweep(simu_temp, 1, mu_pos, '+') )
 }
 
@@ -227,6 +186,7 @@ ridge_coef <- function(X_vec, weight_vec, Vt, center, factor_family){
                  family = factor_family, offset = center,
                  weights = weight_vec))[-1])
 }
+
 
 
 bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
@@ -270,11 +230,19 @@ bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
     if (it > 1 && abs((dev_new - dev) / (dev + .1)) < control$epsilon) break
     dev <- dev_new
   }
-  return(beta)
-  #list(coef = beta, hessian = eh, deviance = dev)
+  mueta_square <- family$mu.eta(eta)^2
+  varmu <- family$variance(mu) * dispersion
+  diag_s = weights / varmu * mueta_square
+  list(coef = beta, hessian = eh, deviance = dev, diag_s = diag_s)
+  # return (beta)
 }
 
-Lapl_grad <- function(X_batch, Vt, factor_family, weights, dispersion, center, q = dim(Vt)[2]){
+Lapl_grad <- function(X_batch, Vt,
+                      factor_family, weights,
+                      dispersion, center, q = dim(Vt)[2],
+                      lambda_prior = list(mean = rep(0, q),
+                                    precision = rep(1, q))
+                      ){
 
   n <- dim(X_batch)[1]; d <- dim(X_batch)[2]
   Vt <- matrix(Vt, nrow = d, ncol =q)
@@ -288,14 +256,19 @@ Lapl_grad <- function(X_batch, Vt, factor_family, weights, dispersion, center, q
   # print(end- start)
 
   # start = Sys.time()
-  lambda_prior <- list(mean = rep(0, q), precision = rep(1, q))
+
   L_mle = t(mapply(bsglm, y = asplit(X_batch, 1),
            weights = asplit(weights, 1),
            MoreArgs = list(x = Vt, prior_coef = lambda_prior, dispersion = dispersion,
                            family = factor_family, offset = c(center))
            ))
+  # question, returning a list of variable
+
   # end = Sys.time()
   # print(end- start)
+
+  browser()
+  head(L_mle)
 
 
   eta_mle <- sweep(tcrossprod(L_mle, Vt), 2 , center, '+')
@@ -314,28 +287,38 @@ Lapl_grad <- function(X_batch, Vt, factor_family, weights, dispersion, center, q
   grad_dispersion <- colSums(sweep(scale_dispersion, 2, dispersion * 2, '/'))
 
 
-  return(list(grad_V = grad_V, grad_center = grad_center, grad_dispersion = grad_dispersion))
+  return(list(grad_V = grad_V, grad_center = grad_center,
+              grad_dispersion = grad_dispersion))
 }
 
 # [gradient calculation --- SML]
-SML_grad <- function(Vt, factor_family, X, q, center, sample_size, dispersion = 1, weights = 1){
+SML_grad <- function(Vt, factor_family, X, q, center,
+                     sample_size, dispersion = 1, weights = 1,
+                     lambda_prior = list(mean = rep(0, q),
+                                         precision = rep(1, q))
+                     ){
   n <- dim(X)[1]; d <- dim(X)[2]
   Vt <- matrix(Vt, nrow = d, ncol = q)
-  family_pdf <- pdf_calc(factor_family, weights = weights, dispersion = dispersion, log_ = TRUE)
+  family_pdf <- pdf_calc(factor_family, weights = weights,
+                         dispersion = dispersion, log_ = TRUE)
 
   likeli_simu <- array(dim = c(n, d, sample_size))
   grad_simu <- array(dim = c(n, d, q, sample_size))
   grad_simu_center <- array(dim = c(n, d, sample_size))
   grad_simu_dispersion <- matrix(nrow = sample_size, ncol = d)
   for (b in 1:sample_size){
-    L_sample <-  matrix(rnorm(n * q), nrow = n)
+
+    #L_sample <-  matrix(rnorm(n * q), nrow = n)
+    L_sample <- mvtnorm::rmvnorm(n, mean = lambda_prior$mean,
+                                 sigma = diag(1/lambda_prior$precision),
+                                 checkSymmetry = TRUE)
     eta_simu <- tcrossprod(L_sample, Vt)
-    eta_simu <- sweep(eta_simu, 2, center, '+') #todo: add centering
+    eta_simu <- sweep(eta_simu, 2, center, '+')
     mu_simu <- factor_family$linkinv(eta_simu)
     variance_simu <- factor_family$variance(mu_simu)
     mueta_simu <- factor_family$mu.eta(eta_simu)
 
-    grad_scale <- (mu_simu- X) * weights * mueta_simu/variance_simu # to do: check glm_weight multiply
+    grad_scale <- (mu_simu- X) * weights * mueta_simu/variance_simu
     grad_scale <- sweep(grad_scale, 2, dispersion, '/' )
 
     grad_Wpearson <- (mu_simu- X)^2 /variance_simu * weights
@@ -372,8 +355,11 @@ SML_grad <- function(Vt, factor_family, X, q, center, sample_size, dispersion = 
 
 
 # [gradient calculation --- Posterior Sampling]
-
-PosSample_Moments <-function(LX_row, Vt, center, factor_family, dispersion, weights){
+PosSample_Moments <-function(LX_row, Vt, center, factor_family,
+                             dispersion, weights,
+                             lambda_prior = list(mean = rep(0, q),
+                                                 precision = rep(1, q))
+                             ){
   d = dim(Vt)[1]; q = dim(Vt)[2]
   L_row = matrix(LX_row[1:q], nrow = 1)
   X_row = matrix(LX_row[-c(1:q)], nrow = 1)
@@ -387,16 +373,27 @@ PosSample_Moments <-function(LX_row, Vt, center, factor_family, dispersion, weig
   scale_var = 1/sweep(var_row, 2, dispersion/weights , '*')
   scale_var = sweep(scale_var, 2, mueta_row, '*')
   hessian_L = crossprod(sweep(Vt, 1, scale_var, "*"), Vt)
+  inv_hessian_L = ginv(hessian_L)
 
-  hessian_add =  ginv(hessian_L) + diag(1, nrow= q)
+  lambda_prior$Sigma = diag(1/lambda_prior$precision)
+  hessian_add =  inv_hessian_L + lambda_prior$Sigma
   hessian_addinv = ginv(hessian_add)
 
-  L_pos = tcrossprod(hessian_addinv, L_row)
-  Sigma_pos = hessian_addinv
+  L_pos1 <- lambda_prior$Sigma %*% tcrossprod(hessian_addinv, L_row)
+  L_pos2 <- inv_hessian_L %*% hessian_addinv %*% lambda_prior$mean
+  L_pos = L_pos1 + L_pos2
+
+  Sigma_pos = inv_hessian_L %*% hessian_addinv %*% lambda_prior$Sigma
   return(list(L_pos = L_pos, Sigma_pos = Sigma_pos))
 }
 
-PosSample_GradRowV <- function(L_row, X_row, center, weight_row, Vt, factor_family, dispersion, sample_size){
+# todo: PosSample_GradRowV, PosSample_GradRowPhi, PosSample_GradRowCenter
+PosSample_GradRowV <- function(L_row, X_row, center,
+                               weight_row, Vt, factor_family,
+                               dispersion, sample_size,
+                               lambda_prior = list(mean = rep(0, q),
+                                                   precision = rep(1, q))
+                               ){
 
   d = dim(Vt)[1];q = dim(Vt)[2]
   LX_row = c(L_row, X_row)
@@ -405,7 +402,8 @@ PosSample_GradRowV <- function(L_row, X_row, center, weight_row, Vt, factor_fami
                                    center = center,
                                    factor_family = factor_family,
                                    dispersion = dispersion,
-                                   weights = weight_row)
+                                   weights = weight_row,
+                                   lambda_prior = lambda_prior)
   L_sample <- PosSample_Draw(Pos_moments, sample_size)
 
   eta_pos = tcrossprod(L_sample, Vt)
@@ -418,12 +416,16 @@ PosSample_GradRowV <- function(L_row, X_row, center, weight_row, Vt, factor_fami
   scales = sweep(mu_pos, 2, X_row, '-')
   scales = scales * mueta_pos/var_pos
   scales = sweep(scales, 2, weight_row/dispersion, '*')
-  #grad_v = sweep(crossprod(L_sample, scales)/sample_size, 2, dispersion, '/')
   grad_v = crossprod(scales, L_sample)/sample_size
   return( grad_v)
 }
 
-PosSample_GradRowPhi <- function(L_row, X_row, center, weight_row, Vt, factor_family, dispersion, sample_size){
+PosSample_GradRowPhi <- function(L_row, X_row, center,
+                                 weight_row, Vt, factor_family,
+                                 dispersion, sample_size,
+                                 lambda_prior = list(mean = rep(0, q),
+                                                     precision = rep(1, q))
+                                 ){
 
   d = dim(Vt)[1]; q = dim(Vt)[2]
   LX_row = c(L_row, X_row)
@@ -431,7 +433,8 @@ PosSample_GradRowPhi <- function(L_row, X_row, center, weight_row, Vt, factor_fa
                                    center = center,
                                    factor_family = factor_family,
                                    dispersion = dispersion,
-                                   weights = weight_row)
+                                   weights = weight_row,
+                                   lambda_prior = lambda_prior)
   L_sample <- PosSample_Draw(Pos_moments, sample_size)
 
   eta_pos = tcrossprod(L_sample, Vt)
@@ -446,7 +449,11 @@ PosSample_GradRowPhi <- function(L_row, X_row, center, weight_row, Vt, factor_fa
   return(c(grad_phi))
 }
 
-PosSample_GradRowCenter <- function(L_row, X_row, center, weight_row, Vt, factor_family, dispersion, sample_size){
+PosSample_GradRowCenter <- function(L_row, X_row, center,
+                                    weight_row, Vt, factor_family,
+                                    dispersion, sample_size,
+                                    lambda_prior = list(mean = rep(0, q),
+                                                        precision = rep(1, q))){
 
   d = dim(Vt)[1];q = dim(Vt)[2]
   LX_row = c(L_row, X_row)
@@ -454,7 +461,8 @@ PosSample_GradRowCenter <- function(L_row, X_row, center, weight_row, Vt, factor
                                    center = center,
                                    factor_family = factor_family,
                                    dispersion = dispersion,
-                                   weights = weight_row)
+                                   weights = weight_row,
+                                   lambda_prior = lambda_prior)
   L_sample <- PosSample_Draw(Pos_moments, sample_size)
 
   eta_pos = tcrossprod(L_sample, Vt)
@@ -479,18 +487,23 @@ PosSample_Draw <- function(Pos_moments, sample_size){
 }
 
 
-PosSample_grad <-function(X_batch, Vt, center, factor_family, dispersion, weights,
-                          sample_size = sample_size, q= dim(Vt)[2]){
+PosSample_grad <-function(X_batch, Vt, center, factor_family,
+                          dispersion, weights, sample_size = sample_size,
+                          q= dim(Vt)[2],
+                          lambda_prior = list(mean = rep(0, q),
+                                              precision = rep(1, q))
+                          ){
   n <- dim(X_batch)[1]; d <- dim(X_batch)[2]; q = dim(Vt)[2]
   Vt <- matrix(Vt, nrow= d, ncol =q)
   L_mle = batch_mle(X_batch, Vt, center, factor_family, q, weights)
+
   grad_v = mapply(PosSample_GradRowV,
                 L_row = asplit(L_mle, 1),
                 X_row = asplit(X_batch, 1),
                 weight_row = asplit(weights, 1),
                 MoreArgs = list(Vt = Vt, factor_family = factor_family,
                                 dispersion = dispersion, sample_size = sample_size,
-                                center = center))
+                                center = center, lambda_prior = lambda_prior))
   grad_v = matrix(rowSums(grad_v), nrow = d)
 
   grad_center = mapply(PosSample_GradRowCenter,
@@ -499,7 +512,7 @@ PosSample_grad <-function(X_batch, Vt, center, factor_family, dispersion, weight
                 weight_row = asplit(weights, 1),
                 MoreArgs = list(Vt = Vt, factor_family = factor_family,
                                 dispersion = dispersion, sample_size = sample_size,
-                                center = center))
+                                center = center, lambda_prior = lambda_prior))
   grad_center = matrix(rowSums(grad_center), ncol = d)
 
 
@@ -509,61 +522,13 @@ PosSample_grad <-function(X_batch, Vt, center, factor_family, dispersion, weight
                        weight_row = asplit(weights, 1),
                        MoreArgs = list(Vt = Vt, factor_family = factor_family,
                                        dispersion = dispersion, sample_size = sample_size,
-                                       center = center))
-
+                                       center = center, lambda_prior = lambda_prior))
 
   grad_dispersion = matrix(rowSums(grad_dispersion), ncol = d)
-  return (list(grad_V = grad_v, grad_center = grad_center, grad_dispersion = grad_dispersion))
+
+  return (list(grad_V = grad_v, grad_center = grad_center,
+               grad_dispersion = grad_dispersion))
 }
 
 
 
-
-# [gradient calculation --- Fast Gaussian Plug In]
-FastGaussian_grad <- function(X_batch, Vt, factor_family, dispersion, weights,  q= dim(Vt)[2]){
-  n <- dim(X_batch)[1]
-  d <- dim(X_batch)[2]
-  Vt <- matrix(Vt, nrow= d, ncol =q)
-
-  q = dim(Vt)[2]
-  d = dim(Vt)[1]
-  L_mle = batch_mle(X_batch, Vt, factor_family, q)
-  LX_matrix = cbind(L_mle, X_batch)
-  grad = apply(LX_matrix, 1, FastGaussian_GradRow, Vt =Vt,
-               factor_family = factor_family, dispersion = dispersion,
-               weights = weights)
-  grad = matrix(rowSums(grad), ncol =d)
-}
-
-
-
-FastGaussian_GradRow <- function(LX_row, Vt, factor_family, dispersion, weights){
-
-
-  q = dim(Vt)[2]
-  # family_pdf = pdf_calc(factor_family, weights = weights, dispersion = dispersion, log_ = TRUE)
-
-  L_row = matrix(LX_row[1:q], nrow = 1)
-  X_row = matrix(LX_row[-c(1:q)], nrow = 1)
-  eta_row = tcrossprod(L_row, Vt)
-  mu_row =  factor_family$linkinv(eta_row)
-  var_row = factor_family$variance(mu_row)
-  mueta_row = factor_family$mu.eta(eta_row)
-  hessian_L = 1/dispersion * crossprod(sweep(Vt, 1, var_row, "*"), Vt)
-
-  L_pos = matrix(tcrossprod(ginv(ginv(hessian_L) + diag(1, nrow= q)), L_row), nrow=1)
-  Sigma_pos = ginv(diag(1, nrow= q) + hessian_L) + diag(1e-08, nrow = q)
-
-  eta_pos = tcrossprod(L_pos, Vt)
-  mu_pos = factor_family$linkinv(eta_pos)
-  # [todo: fix glm weights]
-  scales = (mu_pos - X_row) * mueta_row/var_row
-  # scales = (X_row - mu_pos) * mueta_row/var_row
-  b_hat = 1/dispersion * crossprod(L_pos,  scales)
-
-  # pos_likeli = sum(family_pdf(X_row, mu_pos, weights = weights)) + dmvnorm(L_pos, mean = rep(0, q), sigma = Sigma_pos, log = TRUE)
-  #pos_likeli = dmvnorm(X_row, mean = mu_row, sigma =diag(c(var_row), nrow = d)) * dmvnorm(L_pos, mean = rep(0,q), sigma = Sigma_pos)
-  # pos_likeli = dmvnorm(L_pos, mean = mu_pos, sigma = Sigma_pos)
-  constant = (2 * pi)^(q/2) * det(Sigma_pos)^(1/2)
-  return(b_hat * constant)
-}
