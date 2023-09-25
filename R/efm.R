@@ -211,8 +211,6 @@ efm <- function(x,
                 weights = 1,
                 algo = 'lapl',
                 start = NULL,
-                dispersion = 1,
-                center = matrix(0, ncol = ncol(x)),
                 lambda_prior = list(mean = rep(0, q),
                                     precision = rep(1, q)),
                 adam_control = adam.control(
@@ -250,8 +248,6 @@ efm <- function(x,
   }
   dim(weights) <- dim(x)
 
-  if (length(dispersion) ==1)(dispersion = rep(dispersion, p))
-  dispersion[dispersion<=0] = 0.1
 
   if (is.null(start)) {
     # [ initialize through SVD]
@@ -260,8 +256,16 @@ efm <- function(x,
     se <- svd(eta, nu = rank, nv = rank)
     Vt <- sweep(se$v, 2, se$d[1:rank], `*`)
 
+    scale_mu <- scale(mu, scale = FALSE) # center
+    center <- attr(scale_mu, "scaled:center")
+    dispersion = apply((x - mu)^2/factor_family$variance(mu), 2, mean)
   } else {
-    Vt = start
+    Vt = start$Vt
+    center = start$center
+    dispersion = start$dispersion
+    if (length(dispersion) ==1)(dispersion = rep(dispersion, p))
+    dispersion[dispersion<=0] = 0.1
+
     if (nrow(Vt) != p || ncol(Vt) != rank)
       stop("dimensions of V are inconsistent")
   }
@@ -370,28 +374,44 @@ efm <- function(x,
 } # end of function
 
 
-fa_gqem <- function (X, q, ngq, family = gaussian(),
+fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
                      control = list(), Phi = 1, eval_size = 500,
-                     eval_likeli = FALSE, ...) {
-
+                     eval_likeli = FALSE, start = NULL, ...) {
+  n <- nrow(X); p <- ncol(X)
   control <- do.call("glm.control", control)
   fam <- if (is.function(family)) family() else family
-  # initialize
-  y <- c(X); nobs <- length(y); weights <- rep(1, nobs); etastart <- 1
-  eval(fam$initialize)
-  n <- nrow(X); p <- ncol(X)
+  if (is.null(start)){
+    mu <- family_initialize(X, weights, fam)
+    eta <- fam$linkfun(mu)
+    se <- svd(eta, nu = q, nv = q)
+    V <- sweep(se$v, 2, se$d[1:q], `*`)
 
+    scale_mu <- scale(mu, scale = FALSE) # center
+    alpha <- attr(scale_mu, "scaled:center")
+    Phi = apply((X - mu)^2/fam$variance(mu), 2, mean)
+  }else{
+    #browser()
+    V = start$Vt
+    alpha = c(start$center)
+    Phi = c(start$dispersion)
     if (length(Phi) ==1)(Phi = rep(Phi, p))
-  Phi[Phi<=0] = 0.1
+    Phi[Phi<=0] = 0.1
+  }
 
-  x <- matrix(fam$linkfun(mustart), nrow = n)
-  x <- scale(x, scale = FALSE) # center
-  S <- cov(x) # more robust, instead of `crossprod(x) / n`
-  # [ init ]
-  alpha <- attr(x, "scaled:center")
-  ss <- symm_eigen(S)
-  V <- sweep(ss$vectors[, 1:q, drop = FALSE], 2, sqrt(ss$values[1:q]), `*`)
-  #Phi <- rep(1, p) # TODO: fit dispersions in quasi families
+
+  # # initialize
+  # y <- c(X); nobs <- length(y); weights <- rep(1, nobs); etastart <- 1
+  # eval(fam$initialize)
+  # n <- nrow(X); p <- ncol(X)
+  #
+  # x <- matrix(fam$linkfun(mustart), nrow = n)
+  # x <- scale(x, scale = FALSE) # center
+  # S <- cov(x) # more robust, instead of `crossprod(x) / n`
+  # # [ init ]
+  # alpha <- attr(x, "scaled:center")
+  # ss <- symm_eigen(S)
+  # V <- sweep(ss$vectors[, 1:q, drop = FALSE], 2, sqrt(ss$values[1:q]), `*`)
+  # Phi <- rep(1, p) # TODO: fit dispersions in quasi families
 
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
   m <- length(gq$weights)
