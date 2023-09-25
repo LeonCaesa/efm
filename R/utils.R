@@ -507,12 +507,6 @@ PosSample_grad <-function(X_batch, Vt, center, factor_family,
 }
 
 
-# adam_update <- function(v, adam_control)
-# v_dcenter = adam_control$beta1 * v_dcenter + (1 - adam_control$beta1) * grad$grad_center
-# s_dcenter = adam_control$beta2 * s_dcenter + (1 - adam_control$beta2) * grad$grad_center^2
-# vhat_dcenter = v_dcenter / (1 - adam_control$beta1 ^ adam_t)
-# shat_dcenter = s_dcenter / (1 - adam_control$beta2 ^ adam_t)
-
 
 # [function for cov experiments]
 generate_cov <- function(n, d, L_prior, V_prior,center,

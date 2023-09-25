@@ -248,16 +248,15 @@ efm <- function(x,
   }
   dim(weights) <- dim(x)
 
-
   if (is.null(start)) {
     # [ initialize through SVD]
     mu <- family_initialize(x, weights, factor_family)
     eta <- factor_family$linkfun(mu)
-    se <- svd(eta, nu = rank, nv = rank)
-    Vt <- sweep(se$v, 2, se$d[1:rank], `*`)
-
-    scale_mu <- scale(mu, scale = FALSE) # center
-    center <- attr(scale_mu, "scaled:center")
+    scale_eta <- scale(eta, scale = FALSE) # center
+    center <- attr(scale_eta, "scaled:center")
+    S_ <- cov(eta)
+    ss_ <- symm_eigen(S_)
+    Vt <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`)
     dispersion = apply((x - mu)^2/factor_family$variance(mu), 2, mean)
   } else {
     Vt = start$Vt
@@ -265,13 +264,17 @@ efm <- function(x,
     dispersion = start$dispersion
     if (length(dispersion) ==1)(dispersion = rep(dispersion, p))
     dispersion[dispersion<=0] = 0.1
-
     if (nrow(Vt) != p || ncol(Vt) != rank)
       stop("dimensions of V are inconsistent")
   }
 
+  total_iter <- adam_control$max_epoch * as.integer(n / adam_control$batch_size)
+  like_list <- rep(0, total_iter + 1)
 
-  like_list <- rep(0, adam_control$max_epoch * as.integer(n / adam_control$batch_size))
+  like_list[1] <- SML_neglikeli(Vt, factor_family, x,
+    center = center, sample_control$eval_size, dispersion = dispersion,
+    weights = weights, print_likeli = TRUE)
+  eval_time <-0
 
   adam_V <- list(v = matrix(0, nrow = p, ncol = rank),
                 s = matrix(0, nrow = p, ncol = rank),
@@ -342,12 +345,15 @@ efm <- function(x,
 
       # [evaluate marginal likelihood]
       if (eval_likeli) {
-        like_list[adam_t] = SML_neglikeli(
+        start <- Sys.time()
+        like_list[adam_t + 1] = SML_neglikeli(
           Vt, factor_family, x,
           center = center, sample_control$eval_size,
           dispersion = dispersion, weights = weights,
           print_likeli = TRUE)
-          plot(like_list[1:adam_t])
+          plot(like_list[1: (adam_t + 1)])
+        end <- Sys.time()
+        eval_time <- eval_time + end - start
       }
 
       # [early stopping, setting update_norm = Inf to disable]
@@ -360,14 +366,13 @@ efm <- function(x,
           efm_it = adam_t, center = center,
           dispersion = dispersion, like_list = like_list[1:adam_t],
           algo = algo))
-
       }
     } # end of one epoch
   } # end of max epoch
   return(list(
     V = Vt, family = factor_family,
     center = center, efm_it = adam_t,
-    dispersion = dispersion, like_list = like_list[1:adam_t],
+    dispersion = dispersion, like_list = like_list,
     algo = algo
   ))
 
@@ -383,14 +388,13 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
   if (is.null(start)){
     mu <- family_initialize(X, weights, fam)
     eta <- fam$linkfun(mu)
-    se <- svd(eta, nu = q, nv = q)
-    V <- sweep(se$v, 2, se$d[1:q], `*`)
-
-    scale_mu <- scale(mu, scale = FALSE) # center
-    alpha <- attr(scale_mu, "scaled:center")
+    scale_eta <- scale(eta, scale = FALSE) # center
+    alpha <- attr(scale_eta, "scaled:center")
+    S_ <- cov(eta)
+    ss_ <- symm_eigen(S_)
+    V <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`)
     Phi = apply((X - mu)^2/fam$variance(mu), 2, mean)
   }else{
-    #browser()
     V = start$Vt
     alpha = c(start$center)
     Phi = c(start$dispersion)
@@ -399,20 +403,6 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
   }
 
 
-  # # initialize
-  # y <- c(X); nobs <- length(y); weights <- rep(1, nobs); etastart <- 1
-  # eval(fam$initialize)
-  # n <- nrow(X); p <- ncol(X)
-  #
-  # x <- matrix(fam$linkfun(mustart), nrow = n)
-  # x <- scale(x, scale = FALSE) # center
-  # S <- cov(x) # more robust, instead of `crossprod(x) / n`
-  # # [ init ]
-  # alpha <- attr(x, "scaled:center")
-  # ss <- symm_eigen(S)
-  # V <- sweep(ss$vectors[, 1:q, drop = FALSE], 2, sqrt(ss$values[1:q]), `*`)
-  # Phi <- rep(1, p) # TODO: fit dispersions in quasi families
-
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
   m <- length(gq$weights)
   lambda_prior <- list(mean = rep(0, q), precision = rep(1, q))
@@ -420,7 +410,13 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
   iw <- numeric(n * m)
   S <- matrix(nrow = n * m, ncol = p)
   lw_ref <- -.5 * apply(gq$nodes, 1, function (v) sum(v ^ 2))
-  like_list <- rep(0, control$maxit)
+  like_list <- rep(0, control$maxit + 1)
+
+  like_list[1] <- SML_neglikeli(Vt, fam, X,
+                center = center, sample_control$eval_size, dispersion = dispersion,
+                weights = weights,print_likeli = TRUE)
+  eval_time <- 0
+
   for (it in 1:control$maxit) {
     # [ E-step: lambda | x ]
     for (i in 1:n) { # question: apply faster than 1:n?
@@ -444,41 +440,44 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
     dev_new <- 0
     Lo <- cbind(1, L)
     for (j in 1:p) {
-      # Zj = eta
-      # L_i -> eta_i -> Z
-      # X^t W  X Vj = X^T W Zj
-      # xj <- kronecker(X[, j], rep(1, m))
-      # gmc <- glm(xj ~ L, family = fam, weights = iw)
-      # alpha[j] <- gmc$coef[1]; V[j, ] <- gmc$coef[-1]
-      # dev_new <- dev_new + gmc$deviance
-
-      xj <- kronecker(X[, j], rep(1, m))
-      LL <- sweep(Lo, 1, S[,j], '*')
-      H <- crossprod(LL, Lo)
-
-
       eta_jm <- c(tcrossprod(L, V[j,, drop = FALSE])) + alpha[j]
       mu_jm <- family$linkinv(eta_jm)
-      z_jm <- eta_jm + (xj - mu_jm) /family$mu.eta(eta_jm)
-      b_jm <- crossprod(LL, z_jm)
 
+      Zj = eta
+      # L_i -> eta_i -> Z
+      # X^t W  X Vj = X^T W Zj
+      xj <- kronecker(X[, j], rep(1, m))
+      gmc <- glm(xj ~ L, family = fam, weights = iw)
+      alpha[j] <- gmc$coef[1]; V[j, ] <- gmc$coef[-1]
+      dev_new <- dev_new + gmc$deviance
 
-      beta <- gsym_solve(H, b_jm)
-
-      alpha[j] <- beta[1]; V[j,] <- beta[-1]
-      dev_new <- dev_new + sum(family$dev.resids(xj, mu_jm, wt = iw))
+      # xj <- kronecker(X[, j], rep(1, m))
+      # LL <- sweep(Lo, 1, S[,j], '*')
+      # H <- crossprod(LL, Lo)
+      #
+      # eta_jm <- c(tcrossprod(L, V[j,, drop = FALSE])) + alpha[j]
+      # mu_jm <- family$linkinv(eta_jm)
+      # z_jm <- eta_jm + (xj - mu_jm) /family$mu.eta(eta_jm)
+      # b_jm <- crossprod(LL, z_jm)
+      #
+      # beta <- gsym_solve(H, b_jm)
+      # alpha[j] <- beta[1]; V[j,] <- beta[-1]
+      # dev_new <- dev_new + sum(family$dev.resids(xj, mu_jm, wt = iw))
 
       # [update dispersion]
       Phi[j] <- sum((xj - mu_jm)^2 / family$variance(mu_jm) / n * iw)
     }
     if (eval_likeli) {
-        like_list[it] = SML_neglikeli(V,
+        start <- Sys.time()
+        like_list[it + 1] <- SML_neglikeli(V,
           family, X, center = alpha,
           eval_size, dispersion = Phi,
           weights = weights,
           print_likeli = TRUE
       )
-      plot(like_list[1:it])
+      plot(like_list[1:(it +1)])
+      end <- Sys.time()
+      eval_time <- eval_time + end -start
     }
 
 
@@ -490,6 +489,6 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
     dev <- dev_new
   }# end of full iteration
   sv <- svd(V, nv = 0); V <- sweep(sv$u, 2, sv$d * sign(sv$u[1,]), `*`)
-  list(center = alpha, V = V, like_list = like_list,
+  list(center = alpha, V = V, like_list = like_list, eval_time = eval_time,
        family = fam, ngq = ngq, deviance = dev, dispersion = Phi)
 }
