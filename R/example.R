@@ -59,7 +59,7 @@ Vstart = svd(X, nu = q, nv = q)$v
 
 center_start = center_star + rnorm(d, 0, 1)
 dispersion_start = rnorm(d, 0, dispersion_star/3)
-dispersion_start = dispersion_start - min(dispersion_start)
+dispersion_start = dispersion_start - min(dispersion_start) + 0.1
 
 # [initialize at the true]
 # Vstart = V_star
@@ -73,10 +73,18 @@ true_likeli <- SML_neglikeli(V_star, factor_family, X, center = center_star, sam
 # [EM Newton]
 ngq <- 15
 control <- list(maxit = 20, epsilon = 1e-6, trace = TRUE)
-res <- fa_gqem(X, q, ngq, family =factor_family, control = control)
+res <- fa_gqem(X, q, ngq, family =factor_family, control = control, Phi = dispersion_start)
+
 cbind(res$alpha, res$V, c(center_star), V_star)
 cov(X); cor(X)
-(cx <- marg_var(res$alpha, res$V, res$family, ngq)); cov2cor(cx)
+(efm_esti_cov <- marg_var(res$alpha, res$V, res$family, ngq)); cov2cor(cx)
+efm_true_cov <- marg_var(center_star, V_star, res$family, ngq)
+
+mse_efm = mean((efm_esti_cov- efm_true_cov)^2)
+mse_num = mean((cov(X)- efm_true_cov)^2)
+print(mse_efm)
+print(mse_num)
+
 
 
 # [Gradient]

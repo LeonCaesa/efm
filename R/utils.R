@@ -133,10 +133,6 @@ gsym_solve <- function (A, b, tol = sqrt(.Machine$double.eps)) {
   V %*% sweep(crossprod(V, b), 1, d, `/`)
 }
 
-# solve A * x = b, where A is symmetric with eigendecomposition
-# A = V * diag(d) * V' stored in `ea <- symm_eigen(A)`
-gsym_solve_bsglm<- function (ea, b)
-  drop(ea$vectors %*% sweep(crossprod(ea$vectors, b), 1, ea$values, `/`))
 
 # [method for experiment generation]
 # todo: add prior support
@@ -173,25 +169,10 @@ simu_pos = function(mu_pos, CholSigma, sample_size = 1){
 }
 
 
-# [gradient calculation --- Laplacian (depreciated)]
-ridge_coef <- function(X_vec, weight_vec, Vt, center, factor_family){
-  d = dim(Vt)[1]
-  sd_scalar = sqrt(var(X_vec)*(d-1)/d)
-
-  pen_result <- glmnet(x = Vt, y= X_vec, family = factor_family, alpha = 0, lambda = 1,
-                       weights = weight_vec, offset = center,
-                       intercept = FALSE, standardize = FALSE, thresh= 1e-10,
-                       type.logistic = c("Newton"))
-  return(as.vector(coef(pen_result, s = sd_scalar * 1/d, exact = TRUE, x = Vt, y = X_vec,
-                 family = factor_family, offset = center,
-                 weights = weight_vec))[-1])
-}
-
-
 
 bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
                    start = NULL, family = gaussian(), dispersion = 1,
-                   control = list()) {
+                   control = list(), return_hessian = FALSE) {
   control <- do.call("glm.control", control)
   nobs <- nrow(x); nvars <- ncol(x)
   if (is.null(weights)) weights <- rep.int(1, nobs)
@@ -220,7 +201,9 @@ bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
     z <- crossprod(x, W * (eta - offset) + residuals) + beta0
     H <- mat_add(prior_coef$precision, crossprod(x, x * c(W))) # Hessian
     eh <- symm_eigen(H)
-    beta <- gsym_solve_bsglm(eh, z)
+    #beta <- gsym_solve_bsglm(eh, z)
+    beta <- gsym_solve(H, z)
+
     eta <- drop(mat_mult(x, beta, nvars == 1)) + offset
     mu <- family$linkinv(eta)
     bd <- beta - prior_coef$mean
@@ -233,8 +216,12 @@ bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
   mueta_square <- family$mu.eta(eta)^2
   varmu <- family$variance(mu) * dispersion
   diag_s = weights / varmu * mueta_square
-  list(coef = beta, hessian = eh, deviance = dev, diag_s = diag_s)
-  # return (beta)
+  # S = n times n , non-diagonal matrix
+  if (return_hessian){
+    return (list(coef = beta, hessian = eh, deviance = dev, diag_s = diag_s))
+  }else{
+    return (beta)
+  }
 }
 
 Lapl_grad <- function(X_batch, Vt,
@@ -247,15 +234,6 @@ Lapl_grad <- function(X_batch, Vt,
   n <- dim(X_batch)[1]; d <- dim(X_batch)[2]
   Vt <- matrix(Vt, nrow = d, ncol =q)
 
-  # start = Sys.time()
-  # weights_modify = sweep(weights, 2, dispersion, '/')
-  # L_mle <- t(mapply(ridge_coef, X_vec = asplit(X_batch, 1),
-  #                   weight_vec = asplit(weights_modify, 1),
-  #                   MoreArgs = list(Vt = Vt, factor_family = factor_family, center = c(center))))
-  # end = Sys.time()
-  # print(end- start)
-
-  # start = Sys.time()
 
   L_mle = t(mapply(bsglm, y = asplit(X_batch, 1),
            weights = asplit(weights, 1),
@@ -267,8 +245,8 @@ Lapl_grad <- function(X_batch, Vt,
   # end = Sys.time()
   # print(end- start)
 
-  browser()
-  head(L_mle)
+  #browser()
+  #head(L_mle)
 
 
   eta_mle <- sweep(tcrossprod(L_mle, Vt), 2 , center, '+')
@@ -530,5 +508,36 @@ PosSample_grad <-function(X_batch, Vt, center, factor_family,
                grad_dispersion = grad_dispersion))
 }
 
+
+# adam_update <- function(v, adam_control)
+# v_dcenter = adam_control$beta1 * v_dcenter + (1 - adam_control$beta1) * grad$grad_center
+# s_dcenter = adam_control$beta2 * s_dcenter + (1 - adam_control$beta2) * grad$grad_center^2
+# vhat_dcenter = v_dcenter / (1 - adam_control$beta1 ^ adam_t)
+# shat_dcenter = s_dcenter / (1 - adam_control$beta2 ^ adam_t)
+
+
+# [function for cov experiments]
+generate_cov <- function(n, d, L_prior, V_prior,center,
+                         family, weights, phi){
+  V0 = rmvnorm(d, mean = V_prior$mean,
+               sigma = diag(V_prior$sigma),
+               checkSymmetry = TRUE)
+  L0 <- rmvnorm(n, mean = L_prior$mean,
+                sigma = diag(1/L_prior$precision),
+                checkSymmetry = TRUE)
+  LV_identified <- efm_identifyLV(L0, V0)
+  eta_LV = tcrossprod(LV_identified$L, LV_identified$V)
+  eta0 = sweep(eta_LV, 2, center, '+')
+  X = generate_data(family= family, eta = eta_LV,
+                    dispersion = phi, weights =weights)
+  list(X = X, L0 = L0, V0 = V0, phi = phi, center = center, weights = weights )
+}
+
+efm_identifyLV <- function(L, V){
+  s <- sign(V[1, ])
+  V_ <- sweep(V, 2, s, `*`)
+  L_ <- sweep(L, 2, s, `*`)
+  list(L = L_, V = V_)
+}
 
 
