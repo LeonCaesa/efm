@@ -223,10 +223,11 @@ efm <- function(x,
                   abs_tol = 1e-6,
                   beta1 = 0.9,
                   beta2 = 0.999,
-                  epsilon = 10 ^ -8),# typo
+                  epsilon = 10^-8),
                 sample_control = sample.control(sample_size = 50, eval_size = 50),
                 eval_likeli = FALSE,
                 identify_ = FALSE) {
+
   phi_flag = check_DispersionUpdate(factor_family)
   if(phi_flag == FALSE){dispersion = 1}
 
@@ -252,8 +253,6 @@ efm <- function(x,
   if (length(dispersion) ==1)(dispersion = rep(dispersion, p))
   dispersion[dispersion<=0] = 0.1
 
-
-
   if (is.null(start)) {
     # [ initialize through SVD]
     mu <- family_initialize(x, weights, factor_family)
@@ -268,10 +267,17 @@ efm <- function(x,
   }
 
 
-  v_dv = matrix(0, nrow = p, ncol = rank); s_dv = matrix(0, nrow = p, ncol = rank)
-  v_dcenter = matrix(0, ncol = p); s_dcenter = matrix(0, ncol = p)
-  v_dphi = matrix(0, ncol = p); s_dphi = matrix(0, ncol = p)
   like_list <- rep(0, adam_control$max_epoch * as.integer(n / adam_control$batch_size))
+
+  adam_V <- list(v = matrix(0, nrow = p, ncol = rank),
+                s = matrix(0, nrow = p, ncol = rank),
+                ams_grad = matrix(0, nrow = p, ncol = rank))
+  adam_center <- list(v = matrix(0, ncol = p),
+                     s = matrix(0, ncol = p),
+                     ams_grad = matrix(0, ncol = p))
+  adam_phi <- list(v = matrix(0, ncol = p),
+                   s = matrix(0, ncol = p),
+                   ams_grad =  matrix(0, ncol = p))
 
   for (epoch in 1:adam_control$max_epoch) {
     for (k in 1:as.integer(n / adam_control$batch_size)) {
@@ -289,23 +295,16 @@ efm <- function(x,
                          center = center,
                          lambda_prior = lambda_prior),
         sml = SML_grad(
-          Vt = Vt,
-          factor_family = factor_family,
-          X = x_batch,
-          q = rank,
-          center = center,
+          Vt = Vt, factor_family = factor_family,
+          X = x_batch, q = rank,center = center,
           sample_size = sample_control$sample_size,
-          dispersion = dispersion,
-          weights = weight_batch,
+          dispersion = dispersion, weights = weight_batch,
           lambda_prior = lambda_prior
         ),
         ps = PosSample_grad(
-          X_batch = x_batch,
-          Vt = Vt,
-          center = center,
-          factor_family = factor_family,
-          dispersion = dispersion,
-          weights = weight_batch,
+          X_batch = x_batch, Vt = Vt,
+          center = center, factor_family = factor_family,
+          dispersion = dispersion, weights = weight_batch,
           sample_size = sample_control$sample_size,
           lambda_prior = lambda_prior
         ),
@@ -318,102 +317,57 @@ efm <- function(x,
       adam_t = (epoch - 1) * as.integer(n / adam_control$batch_size) + k
       lr_schedule = adam_control$step_size / (1 + 0.1 * adam_t ^ adam_control$rho)
 
-      # Question: optimize v_dv, v_dcenter, v_dphi etc
       # [Adam V step]
-      v_dv = adam_control$beta1 * v_dv + (1 - adam_control$beta1) * grad$grad_V
-      s_dv = adam_control$beta2 * s_dv + (1 - adam_control$beta2) * grad$grad_V^2
-      vhat_dv = v_dv / (1 - adam_control$beta1 ^ adam_t)
-      shat_dv = s_dv / (1 - adam_control$beta2 ^ adam_t)
-      #browser()
-
-      # [ Adam center step ]
-      v_dcenter = adam_control$beta1 * v_dcenter + (1 - adam_control$beta1) * grad$grad_center
-      s_dcenter = adam_control$beta2 * s_dcenter + (1 - adam_control$beta2) * grad$grad_center^2
-      vhat_dcenter = v_dcenter / (1 - adam_control$beta1 ^ adam_t)
-      shat_dcenter = s_dcenter / (1 - adam_control$beta2 ^ adam_t)
-
-      # [ Adam dispersion step ]
-      v_dphi = adam_control$beta1 * v_dphi + (1 - adam_control$beta1) * grad$grad_dispersion
-      s_dphi = adam_control$beta2 * s_dphi + (1 - adam_control$beta2) * grad$grad_dispersion^2
-      vhat_dphi = v_dphi / (1 - adam_control$beta1 ^ adam_t)
-      shat_dphi = s_dphi / (1 - adam_control$beta2 ^ adam_t)
-
-      Vt_update =  lr_schedule * vhat_dv / (sqrt(shat_dv) + adam_control$epsilon)
-      center_update = lr_schedule * vhat_dcenter / (sqrt(shat_dcenter) + adam_control$epsilon)
-      dispersion_update = lr_schedule * vhat_dphi / (sqrt(shat_dphi) + adam_control$epsilon)
+      c(adam_V, Vt_update) := adam_update(adam_V, grad$grad_V, adam_control, lr_schedule, adam_t)
+      c(adam_center, center_update) := adam_update(adam_center, grad$grad_center, adam_control, lr_schedule, adam_t)
+      c(adam_phi, dispersion_update) := adam_update(adam_phi, grad$grad_dispersion, adam_control, lr_schedule, adam_t)
 
       # [Update steps]
       Vt = Vt - Vt_update
       center = center - center_update
-      # # print(paste('center update at', adam_t))
-      # # print(-center_update)
-      # print(paste('center dist at', adam_t, mean((center - center_star)^2)))
-
-
       if (phi_flag == TRUE){
-      dispersion = dispersion - c(dispersion_update)
-      invalid_flag = dispersion<0
-      dispersion[invalid_flag] = 0.1
-      # # print(paste('dispersion update at', adam_t))
-      # # print(-dispersion_update)
-      # print(paste('dispersion dist at', adam_t, mean((dispersion - dispersion_star)^2)))
-      }
-
-
+        dispersion = dispersion - c(dispersion_update)
+        invalid_flag = dispersion<0
+        dispersion[invalid_flag] = 0.1}
 
       #[Identifiability]
       if (identify_) {
         svd_efm = svd(Vt)
         svd_efm$u = efm_sign(svd_efm$u)
-        Vt = sweep(svd_efm$u, 2, svd_efm$d, '*')
-      }
+        Vt = sweep(svd_efm$u, 2, svd_efm$d, '*')}
 
       # [evaluate marginal likelihood]
       if (eval_likeli) {
         like_list[adam_t] = SML_neglikeli(
-          Vt,
-          factor_family,
-          x,
-          center = center,
-          sample_control$eval_size,
-          dispersion = dispersion,
-          weights = weights,
-          print_likeli = TRUE
-        )
-        plot(like_list[1:adam_t])
+          Vt, factor_family, x,
+          center = center, sample_control$eval_size,
+          dispersion = dispersion, weights = weights,
+          print_likeli = TRUE)
+          plot(like_list[1:adam_t])
       }
 
-      # [early stopping]
-      #update_norm = mean((Vt_update) ^ 2)
+      # [early stopping, setting update_norm = Inf to disable]
       update_norm = Inf
-      #print(update_norm)
       stop_flag = update_norm < adam_control$abs_tol
       if ((epoch >= 2) && (stop_flag)) {
         print('find optimal points')
         return(list(
-          V = Vt,
-          family = factor_family,
-          efm_it = adam_t,
-          center = center,
-          dispersion = dispersion,
-          like_list = like_list[1:adam_t],
-          algo = algo
-        ))
+          V = Vt, family = factor_family,
+          efm_it = adam_t, center = center,
+          dispersion = dispersion, like_list = like_list[1:adam_t],
+          algo = algo))
+
       }
     } # end of one epoch
   } # end of max epoch
   return(list(
-    V = Vt,
-    family = factor_family,
-    center = center,
-    efm_it = adam_t,
-    dispersion = dispersion,
-    like_list = like_list[1:adam_t],
+    V = Vt, family = factor_family,
+    center = center, efm_it = adam_t,
+    dispersion = dispersion, like_list = like_list[1:adam_t],
     algo = algo
   ))
 
 } # end of function
-
 
 
 fa_gqem <- function (X, q, ngq, family = gaussian(),

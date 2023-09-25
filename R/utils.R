@@ -285,8 +285,6 @@ SML_grad <- function(Vt, factor_family, X, q, center,
   grad_simu_center <- array(dim = c(n, d, sample_size))
   grad_simu_dispersion <- matrix(nrow = sample_size, ncol = d)
   for (b in 1:sample_size){
-
-    #L_sample <-  matrix(rnorm(n * q), nrow = n)
     L_sample <- mvtnorm::rmvnorm(n, mean = lambda_prior$mean,
                                  sigma = diag(1/lambda_prior$precision),
                                  checkSymmetry = TRUE)
@@ -540,4 +538,46 @@ efm_identifyLV <- function(L, V){
   list(L = L_, V = V_)
 }
 
+':=' <- function(lhs, rhs) {
+  frame <- parent.frame()
+  lhs <- as.list(substitute(lhs))
+  if (length(lhs) > 1)
+    lhs <- lhs[-1]
+  if (length(lhs) == 1) {
+    do.call(`=`, list(lhs[[1]], rhs), envir=frame)
+    return(invisible(NULL))
+  }
+  if (is.function(rhs) || is(rhs, 'formula'))
+    rhs <- list(rhs)
+  if (length(lhs) > length(rhs))
+    rhs <- c(rhs, rep(list(NULL), length(lhs) - length(rhs)))
+  for (i in 1:length(lhs))
+    do.call(`=`, list(lhs[[i]], rhs[[i]]), envir=frame)
+  return(invisible(NULL))
+}
+
+
+adam_update <- function(adam_param, grad_, adam_control,
+                        lr_schedule, adam_t){
+
+  v_candidate<- adam_control$beta1 * adam_param$v  + (1 - adam_control$beta1) * grad_
+  s_candidate <- adam_control$beta2 * adam_param$s  + (1 - adam_control$beta2) * grad_^2
+
+  #browser()
+  if (!is.null(adam_param$ams_grad)){
+    adam_param$ams_grad <- pmax(adam_param$ams_grad, s_candidate)
+    s_update <- adam_param$ams_grad
+  }else{
+    s_update <-adam_param$s
+  }
+
+  adam_param$v <- v_candidate
+  adam_param$s <- s_candidate
+
+  vhat_dv = adam_param$v / (1 - adam_control$beta1^adam_t)
+  shat_dv = s_update / (1 - adam_control$beta2^adam_t)
+
+  param_update <-  lr_schedule * vhat_dv / (sqrt(shat_dv) + adam_control$epsilon)
+  return(list(adam_param = adam_param, param_update = param_update))
+}
 

@@ -5,8 +5,8 @@ library(matrixStats)
 library(glmnet)
 # [4.1 simulated data]
 set.seed(1)
-d = 20
-n = 500
+d = 10
+n = 100
 q = 2
 dispersion_star = 2
 adam_control = adam.control(max_epoch = 20, batch_size = 128,

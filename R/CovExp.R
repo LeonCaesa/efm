@@ -22,7 +22,7 @@ V_prior <- list(mean = rep(0, q),
 
 
 factor_family <- quasipoisson()
-n <- 500; d_list <- seq(10, 100, by =10)
+n <- 500; d_list <- seq(50, 100, by =10)
 
 
 for (d in d_list){
