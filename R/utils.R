@@ -43,11 +43,11 @@ symm_mult <- function (ea, b, solve = FALSE, transpose = FALSE) {
 
 #' @export
 #' Var(X) = E_L[Var(X|L) + Var(E(X|L))]
-marg_var <- function (center, V, family, ngq = 15, ...) {
+marg_var <- function (center, V, family, ngq = 15, dispersion =1, ...) {
   if (!is.vector(center)) center = c(center)
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, ncol(V), ...)
   fam <- if (is.function(family)) family() else family
-  ev <- gq$E(function (l) fam$variance(fam$linkinv(center + V %*% l)))
+  ev <- gq$E(function (l) fam$variance(fam$linkinv(center + V %*% l)) * dispersion )
   mv <- gq$E(function (l) fam$linkinv(center + V %*% l))
   ve <- gq$E(function (l) tcrossprod(fam$linkinv(center + V %*% l) - mv))
   matrix(ve, nrow = nrow(V)) + diag(ev) # question: why add diagonal?

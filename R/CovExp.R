@@ -53,9 +53,9 @@ for (d in d_list){
 }
 
 
-true_cov <- marg_var(truth$center, truth$V, family = factor_family, ngq = 15)
-efm_esti <- marg_var(efm_result$center, efm_identify(efm_result$V), family = factor_family, ngq = 15)
-fagqem_esti <- marg_var(efm_fagqem$center, efm_fagqem$V, family = factor_family, ngq = 15)
+true_cov <- marg_var(truth$center, truth$V, family = factor_family, ngq = 15, dispersion = truth$phi)
+efm_esti <- marg_var(efm_result$center, efm_identify(efm_result$V), family = factor_family, ngq = 15, dispersion = efm_result$dispersion)
+fagqem_esti <- marg_var(efm_fagqem$center, efm_fagqem$V, family = factor_family, ngq = 15, dispersion = efm_fagqem$dispersion)
 naive_esti <- cov(truth$X)
 
 mse_naive = mean((naive_esti - true_cov)^2)
