@@ -1,8 +1,10 @@
+setwd('/projectnb/dmfgrp/efm/')
 source('./R/utils.R')
 source('./R/efm.R')
-library(MASS)
+library(mvtnorm)
 library(matrixStats)
-library(glmnet)
+library(MASS)
+
 # [4.1 simulated data]
 set.seed(1)
 d = 10
@@ -66,33 +68,36 @@ dispersion_start = dispersion_start - min(dispersion_start) + 0.1
 # center_start = center_star
 # dispersion_start = rep(dispersion_star, d)
 
+
 true_likeli <- SML_neglikeli(V_star, factor_family, X, center = center_star, sample_control$eval_size,
                              dispersion = dispersion_star, weights = factor_weights, print_likeli = TRUE)
 
 
 # [EM Newton]
-ngq <- 15
-control <- list(maxit = 20, epsilon = 1e-6, trace = TRUE)
-res <- fa_gqem(X, q, ngq, family =factor_family, control = control, Phi = dispersion_start)
+# ngq <- 15
+# control <- list(maxit = 20, epsilon = 1e-6, trace = TRUE)
+# res <- fa_gqem(X, q, ngq, family =factor_family, control = control, Phi = dispersion_start)
+#
+# cbind(res$alpha, res$V, c(center_star), V_star)
+# cov(X); cor(X)
+# (efm_esti_cov <- marg_var(res$alpha, res$V, res$family, ngq)); cov2cor(cx)
+# efm_true_cov <- marg_var(center_star, V_star, res$family, ngq)
+#
+# mse_efm = mean((efm_esti_cov- efm_true_cov)^2)
+# mse_num = mean((cov(X)- efm_true_cov)^2)
+# print(mse_efm)
+# print(mse_num)
 
-cbind(res$alpha, res$V, c(center_star), V_star)
-cov(X); cor(X)
-(efm_esti_cov <- marg_var(res$alpha, res$V, res$family, ngq)); cov2cor(cx)
-efm_true_cov <- marg_var(center_star, V_star, res$family, ngq)
-
-mse_efm = mean((efm_esti_cov- efm_true_cov)^2)
-mse_num = mean((cov(X)- efm_true_cov)^2)
-print(mse_efm)
-print(mse_num)
-
-
+init <- list(Vt = Vstart, center = center_star, dispersion = dispersion_start)
+# init <- list(center = truth$center + rnorm(d, 0, 1),
+#              dispersion = rnorm(d, 0, truth$phi/3),
+#              Vt = svd(truth$X, nu = q, nv = q)$v)
 
 # [Gradient]
 lapl_result <- efm(X/factor_weights, factor_family,
-                  center = center_start, rank = q,
-                  factor_weights, algo = 'lapl', start = Vstart,
+                   rank = q, start = init,
+                  factor_weights, algo = 'lapl',
                   adam_control = adam_control,
-                  dispersion = dispersion_start,
                   sample_control = sample_control, eval_likeli = TRUE,
                   lambda_prior = prior_star)
 

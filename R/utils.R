@@ -41,17 +41,7 @@ symm_mult <- function (ea, b, solve = FALSE, transpose = FALSE) {
 
 
 
-#' @export
-#' Var(X) = E_L[Var(X|L) + Var(E(X|L))]
-marg_var <- function (center, V, family, ngq = 15, dispersion =1, ...) {
-  if (!is.vector(center)) center = c(center)
-  gq <- gaussquadr::GaussQuad$new("gaussian", ngq, ncol(V), ...)
-  fam <- if (is.function(family)) family() else family
-  ev <- gq$E(function (l) fam$variance(fam$linkinv(center + V %*% l)) * dispersion )
-  mv <- gq$E(function (l) fam$linkinv(center + V %*% l))
-  ve <- gq$E(function (l) tcrossprod(fam$linkinv(center + V %*% l) - mv))
-  matrix(ve, nrow = nrow(V)) + diag(ev) # question: why add diagonal?
-}
+
 
 
 check_canonical <- function (fam) {
@@ -68,8 +58,8 @@ dquasipois <- function(x, mu, dispersion, log = TRUE){
   var <- dispersion * mu
   #add_const <- x - x * log(x)
   prob_log = 1/dispersion * (x * log(mu) - mu) - 0.5 * log(2 * pi * var) #+ add_const
-  if (log){return(prob_log)
-  }else{return(exp(prob_log))}
+  # question: change scale dramastically
+  if (log){return(prob_log)}else{return(exp(prob_log))}
 }
 
 dquasibinom <- function(x, mu, dispersion, log = TRUE){
@@ -238,8 +228,12 @@ Lapl_grad <- function(X_batch, Vt,
   L_mle = t(mapply(bsglm, y = asplit(X_batch, 1),
            weights = asplit(weights, 1),
            MoreArgs = list(x = Vt, prior_coef = lambda_prior, dispersion = dispersion,
-                           family = factor_family, offset = c(center))
+                           family = factor_family, offset = c(center),
+                           return_hessian = FALSE
+                           )
            ))
+  #unlist(L_mle[1,1])
+  #dim(matrix(unlist(L_mle[,4]), nrow = n)) # check the order
   # question, returning a list of variable
 
   # end = Sys.time()
@@ -509,11 +503,18 @@ PosSample_grad <-function(X_batch, Vt, center, factor_family,
 
 
 # [function for cov experiments]
-generate_cov <- function(n, d, L_prior, V_prior,center,
+generate_cov <- function(n, d, L_prior, V_prior, center,
                          family, weights, phi){
-  V0 = rmvnorm(d, mean = V_prior$mean,
-               sigma = diag(V_prior$sigma),
-               checkSymmetry = TRUE)
+
+  if (is.vector(V_prior$sigma)){
+    V0 = rmvnorm(d, mean = V_prior$mean,
+                 sigma = diag(V_prior$sigma),
+                 checkSymmetry = TRUE)
+  }else{
+    V0 = rmvnorm(d, mean = V_prior$mean,
+                 sigma = V_prior$sigma)
+  }
+
   L0 <- rmvnorm(n, mean = L_prior$mean,
                 sigma = diag(1/L_prior$precision),
                 checkSymmetry = TRUE)
@@ -522,7 +523,9 @@ generate_cov <- function(n, d, L_prior, V_prior,center,
   eta0 = sweep(eta_LV, 2, center, '+')
   X = generate_data(family= family, eta = eta_LV,
                     dispersion = phi, weights =weights)
-  list(X = X, L0 = L0, V0 = V0, phi = phi, center = center, weights = weights )
+  true_likeli <- SML_neglikeli(V0, family, X, sample_size = 500, L_prior = L_prior,
+                               center = center, dispersion = phi, weights = weights)
+  list(X = X, L0 = L0, V0 = V0, phi = phi, center = center, weights = weights, true_likeli = true_likeli )
 }
 
 efm_identifyLV <- function(L, V){
