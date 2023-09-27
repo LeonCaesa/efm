@@ -309,10 +309,10 @@ efm <- function(x,
 
   total_iter <- adam_control$max_epoch * as.integer(n / adam_control$batch_size)
   like_list <- rep(0, total_iter + 1)
-
-  like_list[1] <- SML_neglikeli(Vt, factor_family, x, L_prior = lambda_prior,
-    center = center, sample_control$eval_size, dispersion = dispersion,
-    weights = weights, print_likeli = TRUE)
+  like_list[1] <- marg_neglikeli(X = x, center = center,
+                 V = Vt, family = factor_family,
+                 weights = weights,
+                 L_prior = lambda_prior, dispersion = dispersion)
   eval_time <-0
 
   adam_V <- list(v = matrix(0, nrow = p, ncol = rank),
@@ -377,8 +377,6 @@ efm <- function(x,
         invalid_flag = dispersion<0
         dispersion[invalid_flag] = 0.1}
 
-      print(dispersion)
-
       #[Identifiability]
       if (identify_) {
         svd_efm = svd(Vt)
@@ -388,11 +386,11 @@ efm <- function(x,
       # [evaluate marginal likelihood]
       if (eval_likeli) {
         start <- Sys.time()
-        like_list[adam_t + 1] = SML_neglikeli(
-          Vt, factor_family, x, L_prior = lambda_prior,
-          center = center, sample_control$eval_size,
-          dispersion = dispersion, weights = weights,
-          print_likeli = TRUE)
+        like_list[adam_t + 1] = marg_neglikeli(X = x, center = center,
+                                               V = Vt, family = factor_family,
+                                               weights = weights,
+                                               L_prior = lambda_prior,
+                                               dispersion = dispersion)
           plot(like_list[1: (adam_t + 1)])
         end <- Sys.time()
         eval_time <- eval_time + end - start
@@ -451,16 +449,17 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
 
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
   m <- length(gq$weights)
-  #lambda_prior <- list(mean = rep(0, q), precision = rep(1, q))
   L <- matrix(nrow = n * m, ncol = q)
   iw <- numeric(n * m)
   S <- matrix(nrow = n * m, ncol = p)
   lw_ref <- -.5 * apply(gq$nodes, 1, function (v) sum(v ^ 2))
   like_list <- rep(0, control$maxit + 1)
 
-  like_list[1] <- SML_neglikeli(V, fam, X, L_prior = lambda_prior,
-                center = alpha, sample_control$eval_size, dispersion = Phi,
-                weights = weights, print_likeli = TRUE)
+  like_list[1] <- marg_neglikeli(X = X, center = alpha,
+                                V = V, family = fam,
+                                weights = weights,
+                                L_prior = lambda_prior,
+                                ngq = ngq, dispersion = Phi)
   eval_time <- 0
 
   for (it in 1:control$maxit) {
@@ -503,7 +502,7 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
 
       eta_jm <- c(tcrossprod(L, V[j,, drop = FALSE])) + alpha[j]
       mu_jm <- family$linkinv(eta_jm)
-      z_jm <- eta_jm + (xj - mu_jm) /family$mu.eta(eta_jm)
+      z_jm <- eta_jm + (xj - mu_jm) /fam$mu.eta(eta_jm)
       b_jm <- crossprod(LL, z_jm)
 
       beta <- gsym_solve(H, b_jm)
@@ -517,18 +516,15 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
     }
     if (eval_likeli) {
         start <- Sys.time()
-        like_list[it + 1] <- SML_neglikeli(V,
-          family, X, L_prior = lambda_prior,
-          center = alpha,
-          eval_size, dispersion = Phi,
-          weights = weights,
-          print_likeli = TRUE
-      )
+        like_list[it + 1] <- marg_neglikeli(X = X, center = alpha,
+                                            V = V, family = fam,
+                                            weights = weights,
+                                            L_prior = lambda_prior,
+                                            dispersion = Phi)
       plot(like_list[1:(it +1)])
       end <- Sys.time()
       eval_time <- eval_time + end -start
     }
-    print(Phi)
 
     if (control$trace) {
       message("[", it, "] dev = ", dev_new)

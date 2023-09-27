@@ -358,12 +358,12 @@ PosSample_Moments <-function(LX_row, Vt, center, factor_family,
 }
 
 # todo: PosSample_GradRowV, PosSample_GradRowPhi, PosSample_GradRowCenter
-PosSample_GradRowV <- function(L_row, X_row, center,
+PosSample_GradTotal <- function(L_row, X_row, center,
                                weight_row, Vt, factor_family,
                                dispersion, sample_size,
                                lambda_prior = list(mean = rep(0, q),
                                                    precision = rep(1, q))
-                               ){
+){
 
   d = dim(Vt)[1];q = dim(Vt)[2]
   LX_row = c(L_row, X_row)
@@ -381,71 +381,23 @@ PosSample_GradRowV <- function(L_row, X_row, center,
   mu_pos = factor_family$linkinv(eta_pos)
   var_pos = factor_family$variance(mu_pos)
   mueta_pos = factor_family$mu.eta(eta_pos)
-
 
   scales = sweep(mu_pos, 2, X_row, '-')
   scales = scales * mueta_pos/var_pos
   scales = sweep(scales, 2, weight_row/dispersion, '*')
   grad_v = crossprod(scales, L_sample)/sample_size
-  return( grad_v)
-}
-
-PosSample_GradRowPhi <- function(L_row, X_row, center,
-                                 weight_row, Vt, factor_family,
-                                 dispersion, sample_size,
-                                 lambda_prior = list(mean = rep(0, q),
-                                                     precision = rep(1, q))
-                                 ){
-
-  d = dim(Vt)[1]; q = dim(Vt)[2]
-  LX_row = c(L_row, X_row)
-  Pos_moments <- PosSample_Moments(LX_row = LX_row, Vt = Vt,
-                                   center = center,
-                                   factor_family = factor_family,
-                                   dispersion = dispersion,
-                                   weights = weight_row,
-                                   lambda_prior = lambda_prior)
-  L_sample <- PosSample_Draw(Pos_moments, sample_size)
-
-  eta_pos = tcrossprod(L_sample, Vt)
-  eta_pos = sweep(eta_pos, 2, center, "+")
-  mu_pos = factor_family$linkinv(eta_pos)
-  var_pos = factor_family$variance(mu_pos)
-
-  scales = -sweep(mu_pos, 2, X_row, '-')
-  scales = 1 - sweep(scales^2, 2, dispersion/weight_row, '/')
-  scales = sweep(scales, 2, dispersion, '/')
-  grad_phi = colMeans(scales)
-  return(c(grad_phi))
-}
-
-PosSample_GradRowCenter <- function(L_row, X_row, center,
-                                    weight_row, Vt, factor_family,
-                                    dispersion, sample_size,
-                                    lambda_prior = list(mean = rep(0, q),
-                                                        precision = rep(1, q))){
-
-  d = dim(Vt)[1];q = dim(Vt)[2]
-  LX_row = c(L_row, X_row)
-  Pos_moments <- PosSample_Moments(LX_row = LX_row, Vt = Vt,
-                                   center = center,
-                                   factor_family = factor_family,
-                                   dispersion = dispersion,
-                                   weights = weight_row,
-                                   lambda_prior = lambda_prior)
-  L_sample <- PosSample_Draw(Pos_moments, sample_size)
-
-  eta_pos = tcrossprod(L_sample, Vt)
-  eta_pos = sweep(eta_pos, 2, center, "+")
-  mu_pos = factor_family$linkinv(eta_pos)
-  var_pos = factor_family$variance(mu_pos)
-  mueta_pos = factor_family$mu.eta(eta_pos)
-  scales = sweep(mu_pos, 2, X_row, '-')
-  scales = scales * mueta_pos/var_pos
-  scales = sweep(scales, 2, weight_row, '*')
   grad_center = 1/dispersion * colMeans(scales)
-  return( grad_center)
+
+
+  scales_phi = -sweep(mu_pos, 2, X_row, '-')
+  scales_phi = 1 - sweep(scales_phi^2, 2, dispersion/weight_row, '/')
+  scales_phi = sweep(scales_phi, 2, dispersion, '/')
+  grad_phi = colMeans(scales_phi)
+
+  return( list(grad_v = c(grad_v), grad_center = c(grad_center), grad_phi = c(grad_phi)))
 }
+
+
 PosSample_Draw <- function(Pos_moments, sample_size){
   L_pos = Pos_moments$L_pos
   Sigma_chol = chol(Pos_moments$Sigma_pos)
@@ -467,26 +419,7 @@ PosSample_grad <-function(X_batch, Vt, center, factor_family,
   Vt <- matrix(Vt, nrow= d, ncol =q)
   L_mle = batch_mle(X_batch, Vt, center, factor_family, q, weights)
 
-  grad_v = mapply(PosSample_GradRowV,
-                L_row = asplit(L_mle, 1),
-                X_row = asplit(X_batch, 1),
-                weight_row = asplit(weights, 1),
-                MoreArgs = list(Vt = Vt, factor_family = factor_family,
-                                dispersion = dispersion, sample_size = sample_size,
-                                center = center, lambda_prior = lambda_prior))
-  grad_v = matrix(rowSums(grad_v), nrow = d)
-
-  grad_center = mapply(PosSample_GradRowCenter,
-                L_row = asplit(L_mle, 1),
-                X_row = asplit(X_batch, 1),
-                weight_row = asplit(weights, 1),
-                MoreArgs = list(Vt = Vt, factor_family = factor_family,
-                                dispersion = dispersion, sample_size = sample_size,
-                                center = center, lambda_prior = lambda_prior))
-  grad_center = matrix(rowSums(grad_center), ncol = d)
-
-
-  grad_dispersion = mapply(PosSample_GradRowPhi,
+  grad_totalvec <- mapply(PosSample_GradTotal,
                        L_row = asplit(L_mle, 1),
                        X_row = asplit(X_batch, 1),
                        weight_row = asplit(weights, 1),
@@ -494,7 +427,9 @@ PosSample_grad <-function(X_batch, Vt, center, factor_family,
                                        dispersion = dispersion, sample_size = sample_size,
                                        center = center, lambda_prior = lambda_prior))
 
-  grad_dispersion = matrix(rowSums(grad_dispersion), ncol = d)
+  grad_v <- matrix(rowSums(do.call(cbind, grad_totalvec[1,])), nrow = d)
+  grad_center <- matrix(rowSums(do.call(cbind, grad_totalvec[2,])), ncol = d)
+  grad_dispersion <- matrix(rowSums(do.call(cbind, grad_totalvec[3,])), ncol = d)
 
   return (list(grad_V = grad_v, grad_center = grad_center,
                grad_dispersion = grad_dispersion))
@@ -523,8 +458,10 @@ generate_cov <- function(n, d, L_prior, V_prior, center,
   eta0 = sweep(eta_LV, 2, center, '+')
   X = generate_data(family= family, eta = eta_LV,
                     dispersion = phi, weights =weights)
-  true_likeli <- SML_neglikeli(V0, family, X, sample_size = 500, L_prior = L_prior,
-                               center = center, dispersion = phi, weights = weights)
+  true_likeli <- marg_neglikeli(X = X, center = center, V = V0,
+                                family = family, weights = weights,
+                                L_prior = L_prior, dispersion = phi)
+
   list(X = X, L0 = L0, V0 = V0, phi = phi, center = center, weights = weights, true_likeli = true_likeli )
 }
 

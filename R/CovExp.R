@@ -34,7 +34,7 @@ phi_prior<-list(alpah = 4.0713, beta= 0.1623)
 
 #factor_family <- quasipoisson()
 factor_family <- negative.binomial(dispersion_star)
-n <- 756; d_list <- seq(16, 1000, by = 20)
+n <- 756; d_list <- seq(16, 1000, by = 100)
 fagqem_control$maxit <- adam_control$max_epoch * as.integer(n / adam_control$batch_size)
 
 
@@ -47,16 +47,6 @@ for (d in d_list){
 
   truth <- generate_cov(n, d, L_prior, V_prior, center_star, family = factor_family,
                         weights = factor_weights, phi = dispersion_star)
-
-  # time_int<- system.time(a <- marg_neglikeli(X = truth$X, center = truth$center, V = truth$V0, family = factor_family,
-  #             weights = factor_weights, L_prior = L_prior, ngq = 15, dispersion = dispersion_star)
-  #             )
-
-  # time_sim <- system.time(b <- SML_neglikeli(Vt = truth$V0, factor_family = factor_family, X = truth$X,
-  #               sample_size = 500, L_prior = L_prior, center = truth$center,
-  #               dispersion = dispersion_star, weights = factor_weights
-  #               ))
-
 
   save_name <- paste(paste(save_dir, 'truth', d, n, sep = '_'), '.RData', sep = '')
   save(truth, file = save_name)
