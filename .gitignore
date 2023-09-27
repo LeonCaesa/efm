@@ -3,6 +3,8 @@
 .Rapp.history
 .Rproj.user/
 
+# Experiment Result
+CovResult/
 
 # Session Data files
 .RData
