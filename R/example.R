@@ -7,17 +7,17 @@ library(MASS)
 
 # [4.1 simulated data]
 set.seed(1)
-d = 10
-n = 100
-q = 2
-dispersion_star = 2
+d = 50
+n = 500
+q = 3
+dispersion_star = 20
 adam_control = adam.control(max_epoch = 20, batch_size = 128,
                             step_size = 0.2, rho = 0, abs_tol = 1e-6,
                             beta1 = 0.9, beta2 = 0.999, epsilon = 10^-8)
 sample_control = sample.control(sample_size = 500, eval_size = 500)
 
-# factor_family = negative.binomial(dispersion_star)
-factor_family = quasipoisson()
+factor_family = negative.binomial(dispersion_star)
+# factor_family = quasipoisson()
 factor_weights = 1
 
 # factor_family = Gamma(link = 'log')
@@ -31,35 +31,24 @@ factor_weights = 1
 
 
 # [generate data]
-prior_star = list(mean = rep(0, q),
-     precision = rep(3, q))
+L_prior <- list(mean = c(0, 0, 0),
+                precision =  1/ c(1, 1, 1))
 
-V_star = matrix(rnorm(q*d, 0, 0.5), nrow = d)
-#L_star = matrix(rnorm(n*q, 0, 0.5), nrow = n)
-#L_star = matrix(rnorm(n*q, 0, 0.5), nrow = n)
-L_star <- mvtnorm::rmvnorm(n, mean = prior_star$mean,
-                             sigma = diag(1/prior_star$precision),
-                             checkSymmetry = TRUE)
+V_prior <- list(mean = c(0, 0 ,0),
+                sigma = c(0.5, 0.5, 0.5))
+center_star <- center_star <- rep(0, d)
 
 
-svd_star = svd(V_star, nu = q, nv = q)
-negative_flag = c(1:q)[svd_star$u[1,]<0]
-svd_star$u = efm_sign(svd_star$u)
-svd_star$v = efm_sign(svd_star$v)
-V_star = tcrossprod(svd_star$u, diag(svd_star$d))
-L_star = tcrossprod(L_star, svd_star$v)
+truth <- generate_cov(n, d, L_prior, V_prior, center_star, family = factor_family,
+                      weights = factor_weights, phi = dispersion_star)
 
-center_star = matrix(0, ncol = d)
-eta_star = tcrossprod(L_star, V_star)
-eta_star = sweep(eta_star, 2, center_star, '+')
-X = generate_data(family= factor_family, eta = eta_star,
-                  dispersion = dispersion_star, weights = factor_weights)
-plot(density(X))
+plot(density(truth$X))
 
 
-Vstart = svd(X, nu = q, nv = q)$v
 
-center_start = center_star + rnorm(d, 0, 1)
+
+Vstart = svd(truth$X, nu = q, nv = q)$v
+center_start = truth$center + rnorm(d, 0, 1)/10
 dispersion_start = rnorm(d, 0, dispersion_star/3)
 dispersion_start = dispersion_start - min(dispersion_start) + 0.1
 
@@ -68,15 +57,31 @@ dispersion_start = dispersion_start - min(dispersion_start) + 0.1
 # center_start = center_star
 # dispersion_start = rep(dispersion_star, d)
 
+init <- NULL
+# init <- list(Vt = Vstart, center = center_start, dispersion = dispersion_start)
+# init <- list(center = truth$center + rnorm(d, 0, 1),
+#              dispersion = rnorm(d, 0, truth$phi/3),
+#              Vt = svd(truth$X, nu = q, nv = q)$v)
 
-true_likeli <- SML_neglikeli(V_star, factor_family, X, center = center_star, sample_control$eval_size,
-                             dispersion = dispersion_star, weights = factor_weights, print_likeli = TRUE)
+
+
+# [Gradient]
+lapl_result <- efm(truth$X/factor_weights, factor_family,
+                                 rank = q, weights = factor_weights,
+                                 start = init, algo ='lapl',  adam_control = adam_control,
+                                 sample_control = sample_control, eval_likeli = TRUE,
+                                 lambda_prior = L_prior)
 
 
 # [EM Newton]
-# ngq <- 15
-# control <- list(maxit = 20, epsilon = 1e-6, trace = TRUE)
-# res <- fa_gqem(X, q, ngq, family =factor_family, control = control, Phi = dispersion_start)
+ngq <- 15
+control <- list(maxit = 20, epsilon = 1e-6, trace = TRUE)
+res <- fa_gqem(truth$X, q, ngq, family = factor_family, lambda_prior= L_prior,
+               start = init, control = control, eval_likeli = TRUE,
+               eval_size = sample_control$eval_size)
+
+
+
 #
 # cbind(res$alpha, res$V, c(center_star), V_star)
 # cov(X); cor(X)
@@ -87,19 +92,6 @@ true_likeli <- SML_neglikeli(V_star, factor_family, X, center = center_star, sam
 # mse_num = mean((cov(X)- efm_true_cov)^2)
 # print(mse_efm)
 # print(mse_num)
-
-init <- list(Vt = Vstart, center = center_star, dispersion = dispersion_start)
-# init <- list(center = truth$center + rnorm(d, 0, 1),
-#              dispersion = rnorm(d, 0, truth$phi/3),
-#              Vt = svd(truth$X, nu = q, nv = q)$v)
-
-# [Gradient]
-lapl_result <- efm(X/factor_weights, factor_family,
-                   rank = q, start = init,
-                  factor_weights, algo = 'lapl',
-                  adam_control = adam_control,
-                  sample_control = sample_control, eval_likeli = TRUE,
-                  lambda_prior = prior_star)
 
 
 

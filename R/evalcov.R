@@ -1,0 +1,179 @@
+source('./R/utils.R')
+source('./R/efm.R')
+library(MASS)
+library(tidyverse)
+n_gq <- 15
+
+
+
+names_algo <- c('lapl', 'sml', 'ps')
+#
+# metric_cov <- function(esti_cov, actual_cov){
+#   d <- dim(esti_cov)[1]
+#   product = esti_cov %*% ginv(actual_cov)
+#   l2_frobenius <- sum((esti_cov - actual_cov)^2)
+#   l1_entropy <- sum(diag(product)) - log (det(product)) - d
+#   l2_normalized <- sum((diag(product) -1)^2)* d^(-1/2)
+#   return(list(l2_frobenius, l1_entropy, l2_normalized))
+# }
+
+metric_cov <- function(esti_cov, actual_cov){
+  d <- dim(esti_cov)[1]
+  eigen_frobenius <- eigen(esti_cov - actual_cov, only.values = TRUE)
+  l2_frobenius <- sqrt(sum(eigen_frobenius$values^2))
+
+  product = esti_cov %*% ginv(actual_cov)
+  l1_entropy <- sum(diag(product)) - log (det(product)) - d
+
+  sigma_half <- chol(ginv(actual_cov))
+  inside_norm <- sigma_half %*% (esti_cov - actual_cov) %*% t(sigma_half)
+  eigen_normalized <- eigen(inside_norm, only.values = TRUE)
+  l2_normalized = sqrt(sum( eigen_normalized$values^2) ) *d^(-1/2)
+  return(list(l2_frobenius, l1_entropy, l2_normalized))
+}
+
+
+#d_list = seq(10, 100, by = 10); n = 500
+# factor_family = quasipoisson()
+# load_dir = '/projectnb/dmfgrp/efm/CovResult/quasipoisson/'
+
+# factor_family = negative.binomial(2)
+# load_dir = '/projectnb/dmfgrp/efm/CovResult/negbinom_phi2/'
+
+# factor_family = negative.binomial(20)
+# load_dir = '/projectnb/dmfgrp/efm/CovResult/Negative Binomial(20)/'
+
+factor_family = poisson()
+load_dir = '/projectnb/dmfgrp/efm/CovResult/poisson/'
+
+#d_list = seq(16, 1000, by = 100); n = 756
+#d_list = seq(16, 716, by = 100); n = 756
+d_list = seq(16, 366, by = 50); n = 756
+
+
+
+
+
+
+# [To store Cov Error]
+error_matrix <- matrix(ncol = 5)
+neglikeli_matrix<-matrix(ncol = 5)
+
+
+# [To store likelihood decrease]
+adam_control <- adam.control(max_epoch = 20, batch_size = 128,
+                             step_size = 0.2, rho = 0, abs_tol = 1e-8,
+                             beta1 = 0.9, beta2 = 0.999, epsilon = 1e-8)
+total_steps <- adam_control$max_epoch * as.integer(n / adam_control$batch_size)
+neglikeli_array <- array( dim = c(total_steps, ncol = 5, 5))
+colnames(neglikeli_array) <- c('naive', 'fqgqem', names_algo)
+
+metric_names = c('l2frobenius', 'l2entrophy', 'l2normalized')
+
+for (repeat_idx in 1:5){
+
+  d_count = 1
+for (d in d_list){
+    print( c(repeat_idx, d))
+
+    truth_name <- paste(paste(load_dir, 'truth', d, repeat_idx, sep = '_'), '.RData', sep = '')
+    load(truth_name)
+    fagqem_name <- paste(paste(load_dir, 'fageqm', d, repeat_idx, sep = '_'), '.RData', sep = '')
+    load(fagqem_name)
+
+    true_cov <- marg_var(truth$center, truth$V, family = factor_family,
+                         ngq = 15, dispersion = truth$phi, L_prior = truth$L_prior)
+    fagqem_esti <- marg_var(efm_fagqem$center, efm_fagqem$V,
+                            family = factor_family, ngq = 15,
+                            dispersion = efm_fagqem$dispersion, L_prior = truth$L_prior)
+    naive_esti <- cov(truth$X)
+
+    c(l2fnorm, l2entrophy, l2normalized):=metric_cov(naive_esti, true_cov)
+    output_metrics <- cbind(rbind(l2fnorm,l2entrophy,l2normalized), metric_names, d, 'naive', repeat_idx)
+    error_matrix <- rbind(error_matrix, output_metrics)
+    neglikeli_matrix <- rbind(neglikeli_matrix, cbind(1, truth$true_likeli, d, 'truth', repeat_idx))
+
+
+    c(l2fnorm, l2entrophy, l2normalized):=metric_cov(fagqem_esti, true_cov)
+    output_metrics = cbind(rbind(l2fnorm,l2entrophy,l2normalized), metric_names, d, 'fagqem', repeat_idx)
+    error_matrix <- rbind(error_matrix, output_metrics)
+    neglikeli_matrix <- rbind(neglikeli_matrix, cbind(1:length(efm_fagqem$like_list), efm_fagqem$like_list, d, 'fagqem', repeat_idx))
+
+    # count_algo = 3
+    # for(algo_ in names_algo){
+    #     efm_name <- paste(paste(load_dir, 'efm', algo_, d, repeat_idx, sep = '_'), '.RData', sep = '')
+    #     load(efm_name)
+    #
+    #     tryCatch(
+    #       # This is what I want to do...
+    #       {
+    #         efm_esti <- marg_var(efm_result$center, efm_result$V,
+    #                              family = factor_family, ngq = 15,
+    #                              dispersion = efm_result$dispersion, L_prior = truth$L_prior)
+    #
+    #         c(l2fnorm, l2entrophy, l2normalized):=metric_cov(efm_esti, true_cov)
+    #         output_metrics = cbind(rbind(l2fnorm,l2entrophy,l2normalized), metric_names, d, algo_, repeat_idx)
+    #         error_matrix <- rbind(error_matrix, output_metrics)
+    #         neglikeli_matrix <- rbind(neglikeli_matrix, cbind(1:length(efm_fagqem$like_list), efm_result$like_list, d, algo_, repeat_idx))
+    #       },
+    #       # ... but if an error occurs, tell me what happened:
+    #       error=function(error_message) {
+    #         c(l2frobenius_array[d_count, count_algo, repeat_idx],
+    #           l1entropy_array[d_count, count_algo, repeat_idx],
+    #           l2normalized_array[d_count, count_algo, repeat_idx]) := c(NA, NA, NA)
+    #       })
+    #
+    #     count_algo = count_algo + 1
+    # } #end of adam algo
+    # d_count = d_count + 1
+}
+}
+
+# [Create error df for analysis]
+error_matrix <- error_matrix[-1, ]; neglikeli_matrix <- neglikeli_matrix[-1,]
+error_df <- data.frame(error_matrix)
+rownames(error_df ) <- 1:nrow(error_df )
+colnames(error_df) =c('error', 'error_type', 'd', 'esti_method', 'repeat_idx')
+error_df[c('error', 'd' )] = apply(error_df[c('error', 'd' )], 2, as.numeric)
+
+
+
+# [show the boxplot]
+plot_error = filter(error_df, esti_method %in% c('naive', 'fagqem'), d> 16)
+ggplot(plot_error) + geom_boxplot(aes(x = as.factor(d), y = error,
+                                    color = esti_method)) +
+  facet_wrap(~error_type, scales = "free")
+
+# [show the avg error]
+aggerror_df <- plot_error %>% group_by(d, esti_method, error_type) %>%
+  summarise(avg_error = mean(error), sd_error = sd(error))
+
+# [show the sd error]
+ggplot(aggerror_df) + geom_line(aes(x = d, y = avg_error, colour = esti_method, linetype = esti_method)) +
+  facet_wrap(~error_type, scales = "free")
+
+ggplot(aggerror_df) + geom_line(aes(x = d, y = sd_error, colour = esti_method, linetype = esti_method)) +
+  facet_wrap(~error_type, scales = "free")
+
+
+neglikeli_df <-data.frame(neglikeli_matrix)
+colnames(neglikeli_df) = c('iter', 'neglikeli', 'd', 'esti_method', 'repeat_idx')
+neglikeli_df$neglikeli <- as.numeric(unlist(neglikeli_df['neglikeli']))
+
+
+plot_neglikli = filter(neglikeli_df, !(esti_method %in% c('truth')))
+
+ggplot(plot_neglikli) + geom_point(aes(x = as.numeric(iter), y = log(neglikeli),
+                                       colour = as.factor(esti_method))) +
+    facet_wrap(~d, scales = "free")
+
+
+# Question:
+# 0. What does it imply for the variance if we have multiple V giving the same neg-likelihood.
+# 1. The second order optimization adjust the step size accordingly, hence has decent cov estimate # need to check how variance calcs is related to this
+# 2. Lapl converges with decent likelihood, but variance deviate the most -- #need to check how variance is calculated, which parameter affect the most
+# 3. Cvg to decent V requires 1. decreasing step size 2. large sample size for PS
+  # 3.1. PS/LAPL/SML step size doesn't decay to 0 as decay rate depends on the problem -- # need to play for convergence scienor
+  # 3.2. PS additionally has problem of sample size
+# 4. Identification issue on the covariance estimate?
+

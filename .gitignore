@@ -5,6 +5,7 @@
 
 # Experiment Result
 CovResult/
+submit_cov.sh.o*
 
 # Session Data files
 .RData

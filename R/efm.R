@@ -10,6 +10,8 @@ NULL
 # `delete dependence on package mvtnorm, MASS, matrixStats
 # `think about better stopping criteria
 
+
+# TODO: how to generate when dispersion<1?
 rqpoisson <- function(n, mu, dispersion){rnbinom(n = n, mu = mu, size = mu/(dispersion-1))}
 #' Generate data according to exponential family distribution given parameter `\eta`
 #'
@@ -24,9 +26,27 @@ generate_data <-
             eta,
             weights = 1,
             dispersion = 1) {
+    n = dim(eta)[1]; p = dim(eta)[2]
     y_len <- prod(dim(eta))
     mu <- family$linkinv(eta)
     if (grepl("Negative Binomial", family$family)) family$family <- "negative.binomial"
+    #rnorm(100, mean = 1:100, sd = c(rep(0.001,99), 100)),
+      # dispersion with same dim on num_generate, mu, phi, works
+    # dispersion <- switch (length(dispersion),
+    #   '1' = matrix(dispersion, nrow = n, ncol = p),
+    #   'p' = do.call("rbind", replicate(n, dispersion, simplify = FALSE)),
+    #   'n' = do.call("cbind", replicate(p, dispersion, simplify = FALSE)),
+    #   y_len = dispersion
+    # )
+    dispersion_len <- length(dispersion)
+    if (dispersion_len == 1){
+      dispersion <- matrix(dispersion, nrow = n, ncol = p)
+    }else if (dispersion_len == p){
+      dispersion <-do.call("rbind", replicate(n, dispersion, simplify = FALSE))
+    }else if (dispersion_len == n){
+      dispersion <-do.call("cbind", replicate(p, dispersion, simplify = FALSE))
+    }
+
     y <- switch(
       family$family,
       gaussian = rnorm(y_len, mu, sqrt(dispersion)),
@@ -34,7 +54,7 @@ generate_data <-
       quasipoisson = rqpoisson(y_len, mu, dispersion),
       binomial = rbinom(y_len, weights, mu),
       Gamma = rgamma(y_len , shape =  1/dispersion, scale = mu * dispersion), # V(x) = dispersion * mean(x)^2
-      negative.binomial = rnegbin(y_len, mu = mu, theta =  dispersion),
+      negative.binomial = rnegbin(y_len, mu = mu, theta = dispersion),
       stop("family `", family$family, "` not recognized")
     )
     dim(y) <- dim(eta)
@@ -86,13 +106,17 @@ batch_mle <- function(X_batch, Vt, center, factor_family, q, weights = 1) {
 
 #' @export
 #' Var(X) = E_L[Var(X|L) + Var(E(X|L))]
-marg_var <- function (center, V, family, ngq = 15, dispersion =1, ...) {
+marg_var <- function (center, V, family, ngq = 15, dispersion =1,
+                      L_prior = list(mean = rep(0, q), precision = rep(1, q)), ...) {
   if (!is.vector(center)) center = c(center)
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, ncol(V), ...)
+  gi <- gq$clone()$location_scale(L_prior$mean, 1/L_prior$precision, squared = TRUE)
+
+
   fam <- if (is.function(family)) family() else family
-  ev <- gq$E(function (l) fam$variance(fam$linkinv(center + V %*% l)) * dispersion )
-  mv <- gq$E(function (l) fam$linkinv(center + V %*% l))
-  ve <- gq$E(function (l) tcrossprod(fam$linkinv(center + V %*% l) - mv))
+  ev <- gi$E(function (l) fam$variance(fam$linkinv(center + V %*% l)) * dispersion )
+  mv <- gi$E(function (l) fam$linkinv(center + V %*% l))
+  ve <- gi$E(function (l) tcrossprod(fam$linkinv(center + V %*% l) - mv))
   matrix(ve, nrow = nrow(V)) + diag(ev)
 }
 
@@ -100,20 +124,31 @@ marg_neglikeli <- function (X, center, V, family, weights = 1,
                          L_prior = list(mean = rep(0, q),
                                         precision = rep(1, q)),
                          ngq = 15, dispersion = 1, log_ = TRUE, ...) {
-  if (!is.vector(center)) center = c(center)
-  gq <- gaussquadr::GaussQuad$new("gaussian", ngq, ncol(V), ...)
-  gi <- gq$clone()$location_scale(L_prior$mean, 1/L_prior$precision, squared = TRUE)
+  # if (!is.vector(center)) center = c(center)
+  # gq <- gaussquadr::GaussQuad$new("gaussian", ngq, ncol(V), ...)
+  # gi <- gq$clone()$location_scale(L_prior$mean, 1/L_prior$precision, squared = TRUE)
+  #
+  # fam <- if (is.function(family)) family() else family
+  # family_pdf <- pdf_calc(family = fam, dispersion = dispersion,
+  #                        weights = weights, log_ = log_)
 
-  fam <- if (is.function(family)) family() else family
-  family_pdf <- pdf_calc(family = fam, dispersion = dispersion,
-                         weights = weights, log_ = log_)
-  #browser()
-  neg_likeli <- -gi$E(function (l) sum(family_pdf(X,
-                                             mu = fam$linkinv(
-                                               sweep(tcrossprod(l, V), 2, center, '+')
-                                               ),
-                                             weights = weights,
-                                             dispersion = dispersion), na.rm =  TRUE))
+
+  # [debug] for dbinom taking X and mu of different dim
+  # x = X
+  # mu = fam$linkinv( sweep(tcrossprod(gi$nodes, V), 2, center, '+'))
+  # total <- dnbinom(x,  1/(fam$variance(1)-1), mu = mu, log = log_)
+  # total_2<- matrix(0, nrow = 739, ncol =10)
+  # for (i in 1:100){total_2 <- total_2 + weights *  dnbinom(x[i,],  1/(fam$variance(1)-1), mu = mu, log = log_)}
+  # browser()
+  # neg_likeli <- -gi$E(function (l) sum(family_pdf(X,
+  #                                            mu = fam$linkinv(
+  #                                              sweep(tcrossprod(l, V), 2, center, '+')
+  #                                              ),
+  #                                            weights = weights,
+  #                                            dispersion = dispersion), na.rm =  TRUE))
+
+  neg_likeli <- SML_neglikeli(V, family, X, sample_size = 500, L_prior = L_prior,
+                                center = center, dispersion = dispersion, weights = weights)
   return(neg_likeli)
 }
 
@@ -141,7 +176,6 @@ SML_neglikeli <- function(Vt,
                           print_likeli = TRUE,
                           log_ = TRUE) {
   n <- dim(X)[1]; p <- dim(X)[2]; q <- dim(Vt)[2]
-  if(length(dispersion) ==1){dispersion = rep(dispersion, p)}
   Vt <- matrix(Vt, nrow = p, ncol = q)
   likeli_simu  <- matrix(0, nrow = n, ncol = sample_size)
   family_pdf <-
@@ -151,7 +185,15 @@ SML_neglikeli <- function(Vt,
       weights = weights,
       log_ = log_
     )
-  dispersion_eval = do.call(rbind, replicate(n, dispersion, simplify=FALSE))
+  dispersion_len <- length(dispersion)
+  if (dispersion_len == 1){
+    dispersion_eval <- matrix(dispersion, nrow = n, ncol = p)
+  }else if (dispersion_len == p){
+    dispersion_eval <-do.call("rbind", replicate(n, dispersion, simplify = FALSE))
+  }else if (dispersion_len == n){
+    dispersion_eval <-do.call("cbind", replicate(p, dispersion, simplify = FALSE))
+  }
+
   for (b in 1:sample_size) {
     L_sample <-  rmvnorm(n, mean = L_prior$mean,
                          sigma = diag(1/L_prior$precision),
@@ -166,8 +208,8 @@ SML_neglikeli <- function(Vt,
                                             dispersion = dispersion_eval
                                             ), na.rm =  TRUE)
   }
-  #neg_likeli = -sum(rowLogSumExps(likeli_simu) - log(sample_size))
-  neg_likeli = -sum(likeli_simu)/sample_size
+  neg_likeli = -sum(rowLogSumExps(likeli_simu) - log(sample_size))
+  #neg_likeli = -sum(likeli_simu)/sample_size
   if (print_likeli) {
     print(paste('loss(negative quasi-likelihood) is', neg_likeli))
   }
@@ -455,17 +497,20 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
   lw_ref <- -.5 * apply(gq$nodes, 1, function (v) sum(v ^ 2))
   like_list <- rep(0, control$maxit + 1)
 
+
+  if(eval_likeli){
   like_list[1] <- marg_neglikeli(X = X, center = alpha,
                                 V = V, family = fam,
                                 weights = weights,
                                 L_prior = lambda_prior,
                                 ngq = ngq, dispersion = Phi)
+  }
   eval_time <- 0
 
   for (it in 1:control$maxit) {
     # [ E-step: lambda | x ]
     for (i in 1:n) { # question: apply faster than 1:n?
-      bs <- bsglm(V, X[i, ], lambda_prior, offset = alpha,
+      bs <- bsglm(V, X[i, ], lambda_prior, offset = alpha, weights = weights,#weights[i,],
                   family = fam, dispersion = Phi, return_hessian = TRUE)
 
       bs$hessian$values <- 1 / bs$hessian$values # invert first
@@ -488,9 +533,9 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
       # eta_jm <- c(tcrossprod(L, V[j,, drop = FALSE])) + alpha[j]
       # mu_jm <- family$linkinv(eta_jm)
       #
-      # Zj = eta
-      # # L_i -> eta_i -> Z
-      # # X^t W  X Vj = X^T W Zj
+      # ## Zj = eta
+      # ## L_i -> eta_i -> Z
+      # ## X^t W  X Vj = X^T W Zj
       # xj <- kronecker(X[, j], rep(1, m))
       # gmc <- glm(xj ~ L, family = fam, weights = iw)
       # alpha[j] <- gmc$coef[1]; V[j, ] <- gmc$coef[-1]
@@ -534,6 +579,6 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
     dev <- dev_new
   }# end of full iteration
   sv <- svd(V, nv = 0); V <- sweep(sv$u, 2, sv$d * sign(sv$u[1,]), `*`)
-  list(center = alpha, V = V, like_list = like_list, eval_time = eval_time,
+  list(center = alpha, V = V, like_list = like_list[like_list!=0], eval_time = eval_time,
        family = fam, ngq = ngq, deviance = dev, dispersion = Phi)
 }

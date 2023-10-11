@@ -40,10 +40,6 @@ symm_mult <- function (ea, b, solve = FALSE, transpose = FALSE) {
 
 
 
-
-
-
-
 check_canonical <- function (fam) {
   ((!is.null(fam$linkcan)) && fam$linkcan) ||
     ((fam$family == "poisson" || fam$family == "quasipoisson") &&
@@ -91,14 +87,13 @@ pdf_calc <-
       binomial = function(x, mu, weights, dispersion = 1)
         weights * dbinom(x * weights, weights, mu, log = log_),
       negbinom = function(x, mu, weights, dispersion = 1)
-        weights *  dnbinom(x,  1/(factor_family$variance(1)-1), mu = mu, log = log_),
+        weights *  dnbinom(x,  1/(family$variance(1)-1), mu = mu, log = log_),
       Gamma = function(x, mu, weights, dispersion)
         weights *  dgamma(
           x,
           shape =  1/dispersion,
           scale = mu * dispersion,
-          log = log_
-        ),
+          log = log_),
       stop("Family `", family$family, "` not recognized")
     )
     return (family_pdf)
@@ -178,6 +173,7 @@ bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
   eta <- eta + offset; mu <- family$linkinv(eta)
   beta0 <- mat_mult(prior_coef$precision, drop(prior_coef$mean))
   dev <- Inf
+
   # [ iterate ]
   for (it in 1:control$maxit) {
     varmu <- family$variance(mu)
@@ -454,15 +450,19 @@ generate_cov <- function(n, d, L_prior, V_prior, center,
                 sigma = diag(1/L_prior$precision),
                 checkSymmetry = TRUE)
   LV_identified <- efm_identifyLV(L0, V0)
-  eta_LV = tcrossprod(LV_identified$L, LV_identified$V)
-  eta0 = sweep(eta_LV, 2, center, '+')
-  X = generate_data(family= family, eta = eta_LV,
+  eta_LV <- tcrossprod(LV_identified$L, LV_identified$V)
+  eta0 <- sweep(eta_LV, 2, center, '+')
+  X <- generate_data(family= family, eta = eta_LV,
                     dispersion = phi, weights =weights)
-  true_likeli <- marg_neglikeli(X = X, center = center, V = V0,
+
+  true_likeli <- marg_neglikeli(X = X/weights, center = center, V = V0,
                                 family = family, weights = weights,
                                 L_prior = L_prior, dispersion = phi)
+  # true_likeli2 <- SML_neglikeli(V0, family, X, sample_size = 500, L_prior = L_prior,
+  #                              center = center, dispersion = phi, weights = weights)
 
-  list(X = X, L0 = L0, V0 = V0, phi = phi, center = center, weights = weights, true_likeli = true_likeli )
+  list(X = X, L0 = L0, V0 = V0, phi = phi, L_prior = L_prior,
+       center = center, weights = weights, true_likeli = true_likeli )
 }
 
 efm_identifyLV <- function(L, V){
