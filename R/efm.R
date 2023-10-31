@@ -469,6 +469,22 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
   n <- nrow(X); p <- ncol(X)
   control <- do.call("glm.control", control)
   fam <- if (is.function(family)) family() else family
+  # [initialize weights]
+  if (is.null(weights)) weights <- matrix(1, nrow = n, ncol = p)
+  if (length(weights) == 1)
+    weights <- rep(weights, n * p)else {
+      if (is.vector(weights)) {
+        if (length(weights) != n)
+          stop("inconsistent number of weights")
+        else
+          weights <- rep(weights, p)
+      } else {
+        if (nrow(weights) != n && ncol(weights) != p)
+          stop("inconsistent number of weights")
+      }
+    }
+  dim(weights) <- dim(X)
+
   if (is.null(start)){
     mu <- family_initialize(X, weights, fam)
     eta <- fam$linkfun(mu)
@@ -487,7 +503,6 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
   }
   phi_flag = check_DispersionUpdate(fam)
   if(phi_flag == FALSE){Phi = 1}
-
 
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
   m <- length(gq$weights)
@@ -510,7 +525,7 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
   for (it in 1:control$maxit) {
     # [ E-step: lambda | x ]
     for (i in 1:n) { # question: apply faster than 1:n?
-      bs <- bsglm(V, X[i, ], lambda_prior, offset = alpha, weights = weights,#weights[i,],
+      bs <- bsglm(V, X[i, ], lambda_prior, offset = alpha, weights = weights[i,],
                   family = fam, dispersion = Phi, return_hessian = TRUE)
 
       bs$hessian$values <- 1 / bs$hessian$values # invert first
@@ -582,3 +597,144 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
   list(center = alpha, V = V, like_list = like_list[like_list!=0], eval_time = eval_time,
        family = fam, ngq = ngq, deviance = dev, dispersion = Phi)
 }
+
+
+
+fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights = 1,
+                      lambda_prior =list(mean = rep(0, q), precision = rep(1,q)),
+                      control = list(), Phi = 1, eval_size = 500,
+                      eval_likeli = FALSE, start = NULL, ...) {
+  n <- nrow(X); p <- ncol(X)
+  control <- do.call("glm.control", control)
+  fam <- if (is.function(family)) family() else family
+
+  # [initialize weights]
+  if (is.null(weights)) weights <- matrix(1, nrow = n, ncol = p)
+  if (length(weights) == 1)
+    weights <- rep(weights, n * p)else {
+      if (is.vector(weights)) {
+        if (length(weights) != n)
+          stop("inconsistent number of weights")
+        else
+          weights <- rep(weights, p)
+      } else {
+        if (nrow(weights) != n && ncol(weights) != p)
+          stop("inconsistent number of weights")
+      }
+    }
+  dim(weights) <- dim(X)
+
+
+  # [initialize iteration]
+  if (is.null(start)){
+    mu <- family_initialize(X, weights, fam)
+    eta <- fam$linkfun(mu)
+    scale_eta <- scale(eta, scale = FALSE) # center
+    alpha <- attr(scale_eta, "scaled:center")
+    S_ <- cov(eta)
+    ss_ <- symm_eigen(S_)
+    V <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`)
+    Phi <- apply((X - mu)^2/fam$variance(mu), 2, mean)
+  }else{
+    V <- start$Vt
+    alpha <- c(start$center)
+    Phi <- c(start$dispersion)
+    if (length(Phi) ==1)(Phi <- rep(Phi, p))
+    Phi[Phi<=0] <- 0.1
+  }
+  phi_flag <- check_DispersionUpdate(fam)
+  if(phi_flag == FALSE){Phi <- rep(1, p)}
+
+  # [initialize integration]
+  gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
+  m <- length(gq$weights)
+  lambda_prior <- list(mean = rep(0, q), precision = rep(1, q))
+  lw_ref <- -.5 * apply(gq$nodes, 1, function (v) sum(v ^ 2))
+  dev <- Inf
+
+
+  # [initialize mc likelihood]
+  like_list <- rep(0, control$maxit + 1)
+  if(eval_likeli){
+    like_list[1] <- marg_neglikeli(X = X, center = alpha,
+                                   V = V, family = fam,
+                                   weights = weights,
+                                   L_prior = lambda_prior,
+                                   ngq = ngq, dispersion = Phi)
+  }
+  eval_time <- 0
+
+  for (it in 1:control$maxit) {
+    # [ E-step: lambda | x ]
+    H <- matrix(0, nrow = p, ncol = (q + 1) ^ 2)
+    z <- matrix(0, nrow = p, ncol = q + 1)
+    Phi_new <- rep(0, p) #reset Phi to 0
+
+    dev_new <- 0
+    for (i in 1:n) {
+      bs <- bsglm(V, X[i, ], lambda_prior, offset = alpha, family = fam,
+                  weights = weights[i, ], dispersion = Phi, return_hessian = TRUE)
+
+      bs$hessian$values <- 1 / bs$hessian$values # invert first
+
+      gi <- gq$clone()$location_scale(bs$coef, bs$hessian, squared = TRUE)
+      # refine weights with importance
+      mu <- fam$linkinv(tcrossprod(V, gi$nodes) + alpha)
+      devi <- apply(mu, 2,
+                    function (mui) sum(fam$dev.resids(X[i,], mui, rep(1, p))))
+      devi <- devi + apply(gi$nodes, 1, function (v) sum(v ^ 2))
+      gi$reweight(-.5 * devi - lw_ref, log_weights = TRUE, normalize = TRUE)
+
+      for (j in 1:p) { # fit column regressions
+        etaj <- drop(gi$nodes %*% V[j, ] + alpha[j])
+        muj <- fam$linkinv(etaj)
+        varmuj <- fam$variance(muj)
+        wj <- weights[i, j] * gi$weights
+        Wj <- wj * varmuj / Phi[j]
+        rj <- wj * (X[i, j] - muj) / Phi[j]
+        if (!check_canonical(fam)) { # adjust weights?
+          thetaetaj <- fam$mu.eta(etaj) / varmuj
+          Wj <- Wj * thetaetaj ^ 2
+          rj <- rj * thetaetaj
+        }
+        xj <- cbind(1, gi$nodes)
+        z[j, ] <- z[j, ] + crossprod(xj, Wj * etaj + rj)
+        H[j, ] <- H[j, ] + c(crossprod(xj, xj * Wj))
+        #TODO: check with Luis
+        if(phi_flag == TRUE){Phi_new[j] <- Phi_new[j] + sum((X[i,j] - muj)^2 / varmuj / n * gi$weights)}
+        dev_new <- dev_new + sum(fam$dev.resids(rep(X[i, j], m), muj, wj))
+      }
+    }
+    # [ M-step: fit alpha and V ]
+    for (j in 1:p) {
+
+      betaj <- gsym_solve(matrix(H[j, ], nrow = q + 1), z[j, ])
+      alpha[j] <- betaj[1]; V[j, ] <- betaj[-1]
+      if(phi_flag == TRUE){Phi[j] <- Phi_new[j]}
+    }
+
+
+    # [ update mc likelihood]
+    if (eval_likeli) {
+      start <- Sys.time()
+      like_list[it + 1] <- marg_neglikeli(X = X, center = alpha,
+                                          V = V, family = fam,
+                                          weights = weights,
+                                          L_prior = lambda_prior,
+                                          dispersion = Phi)
+      plot(like_list[1:(it +1)])
+      end <- Sys.time()
+      eval_time <- eval_time + end -start
+    }
+
+    if (control$trace) {
+      message("[", it, "] dev = ", dev_new)
+    }
+    if (it > 1 && abs((dev_new - dev) / (dev + .1)) < control$epsilon) break
+    dev <- dev_new
+  }
+  sv <- svd(V, nv = 0); V <- sweep(sv$u, 2, sv$d * sign(sv$u[1,]), `*`)
+  list(center = alpha, V = V, like_list = like_list[like_list!=0], eval_time = eval_time,
+       family = fam, ngq = ngq, deviance = dev, dispersion = Phi)
+}
+

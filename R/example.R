@@ -76,11 +76,19 @@ lapl_result <- efm(truth$X/factor_weights, factor_family,
 # [EM Newton]
 ngq <- 15
 control <- list(maxit = 20, epsilon = 1e-6, trace = TRUE)
-res <- fa_gqem(truth$X, q, ngq, family = factor_family, lambda_prior= L_prior,
-               start = init, control = control, eval_likeli = TRUE,
-               eval_size = sample_control$eval_size)
+start = Sys.time()
+res2 <- fa_gqem2(X, q, ngq, family =factor_family, control = control)
+end = Sys.time()
+time2 = end - start
+print(time2)
 
 
+start = Sys.time()
+res <- fa_gqem(X, q, ngq, family =factor_family, control = control,
+               Phi = dispersion_start)
+end = Sys.time()
+time1 = end - start
+print(time1)
 
 #
 # cbind(res$alpha, res$V, c(center_star), V_star)
