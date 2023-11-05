@@ -24,7 +24,7 @@ dispersion_star = 1
 factor_family = binomial()
 factor_weights = 10
 
-# [generate data]
+# [Generate data]
 L_prior <- list(mean = c(0, 0, 0),
                 precision =  1/ c(1, 1, 1))
 
@@ -47,10 +47,11 @@ init <- list(Vt= Vstart, center = center_start, dispersion = dispersion_start)
 
 
 
-# [Speed test]
+# [Speed and Binomial test]
 ngq <- 15
 control <- list(maxit = 20, epsilon = 1e-6, trace = TRUE)
 
+# [Luis's code with dispersion support -- Faster]
 start = Sys.time()
 res2 <- fa_gqem2(truth$X/factor_weights, q, ngq, family = factor_family, control = control,
                  eval_likeli = TRUE, weights = factor_weights, Phi = dispersion_start)
@@ -58,7 +59,7 @@ end = Sys.time()
 time2 = end - start
 print(time2)
 
-
+# [Original fagqem code --Slower]
 start = Sys.time()
 res <- fa_gqem(truth$X/factor_weights, q, ngq, family =factor_family, control = control,
                eval_likeli = TRUE, weights = factor_weights, Phi = dispersion_start)

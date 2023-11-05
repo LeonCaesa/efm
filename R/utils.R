@@ -50,18 +50,15 @@ check_canonical <- function (fam) {
 }
 
 
-dquasipois <- function(x, mu, dispersion, log = TRUE){
-  var <- dispersion * mu
-  #add_const <- x - x * log(x)
-  prob_log = 1/dispersion * (x * log(mu) - mu) - 0.5 * log(2 * pi * var) #+ add_const
-  # question: change scale dramastically
+dquasipois <- function(x, mu, weights, dispersion, log = TRUE){
+  prob_log = weights/dispersion * (x * log(mu) - mu) - 0.5 * log(dispersion/weights)
+  #TODO: 1/dispersion changes scale dramastically
   if (log){return(prob_log)}else{return(exp(prob_log))}
 }
 
-dquasibinom <- function(x, mu, dispersion, log = TRUE){
-  var <- dispersion * mu * (1-mu)
+dquasibinom <- function(x, mu, weights, dispersion, log = TRUE){
   logits <- x * log(mu/(1-mu)) + log(1-mu)
-  prob_log = 1/dispersion * logits - 0.5 * log(2 * pi * var) #+ add_const
+  prob_log = weights/dispersion * logits - 0.5 * log(dispersion/weights)
   if (log){return(prob_log)
   }else{return(exp(prob_log))}
 }
@@ -81,9 +78,9 @@ pdf_calc <-
       poisson = function(x, mu, weights, dispersion = 1)
         weights *  dpois(x, mu, log = log_),
       quasipoisson = function(x, mu, weights, dispersion)
-        weights * dquasipois(x, mu, dispersion, log = log_),
+        weights * dquasipois(x, mu, weights, dispersion, log = log_),
       quasibinomial= function(x, mu, weights, dispersion)
-        weights * dquasibinom(x, mu, dispersion, log = log_),
+        weights * dquasibinom(x, mu, weights, dispersion, log = log_),
       binomial = function(x, mu, weights, dispersion = 1)
         weights * dbinom(x * weights, weights, mu, log = log_),
       negbinom = function(x, mu, weights, dispersion = 1)

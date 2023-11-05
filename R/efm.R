@@ -701,7 +701,7 @@ fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights = 1,
         z[j, ] <- z[j, ] + crossprod(xj, Wj * etaj + rj)
         H[j, ] <- H[j, ] + c(crossprod(xj, xj * Wj))
         #TODO: check with Luis
-        if(phi_flag == TRUE){Phi_new[j] <- Phi_new[j] + sum((X[i,j] - muj)^2 / varmuj / n * gi$weights)}
+        if(phi_flag == TRUE){Phi_new[j] <- Phi_new[j] + sum((X[i,j] - muj)^2 / varmuj / n * wj)}
         dev_new <- dev_new + sum(fam$dev.resids(rep(X[i, j], m), muj, wj))
       }
     }
