@@ -461,7 +461,7 @@ efm <- function(x,
 } # end of function
 
 
-fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
+fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
                      lambda_prior = list(mean = rep(0, q),
                                          precision = rep(1, q)),
                      control = list(), Phi = 1, eval_size = 500,
@@ -470,39 +470,43 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
   control <- do.call("glm.control", control)
   fam <- if (is.function(family)) family() else family
   # [initialize weights]
-  if (is.null(weights)) weights <- matrix(1, nrow = n, ncol = p)
+  if (missing(weights)) weights <- 1
   if (length(weights) == 1)
-    weights <- rep(weights, n * p)else {
-      if (is.vector(weights)) {
-        if (length(weights) != n)
-          stop("inconsistent number of weights")
-        else
-          weights <- rep(weights, p)
-      } else {
-        if (nrow(weights) != n && ncol(weights) != p)
-          stop("inconsistent number of weights")
-      }
+    weights <- rep(weights, n * p)
+  else {
+    if (is.vector(weights)) {
+      if (length(weights) != p) # one per column
+        stop("inconsistent number of weights")
+      else
+        weights <- weights[gl(p, n)] # kronecker(weights, rep(1, n))
+    } else {
+      if (nrow(weights) != n && ncol(weights) != p)
+        stop("inconsistent number of weights")
     }
+  }
   dim(weights) <- dim(X)
 
+  phi_flag <- check_DispersionUpdate(fam)
+  if (!phi_flag) Phi <- rep(1, p)
   if (is.null(start)){
-    mu <- family_initialize(X, weights, fam)
+    mu <- family_initialize(X, weights, fam) # FIXME: double check
     eta <- fam$linkfun(mu)
     scale_eta <- scale(eta, scale = FALSE) # center
     alpha <- attr(scale_eta, "scaled:center")
     S_ <- cov(eta)
     ss_ <- symm_eigen(S_)
     V <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`)
-    Phi = apply((X - mu)^2/fam$variance(mu), 2, mean)
-  }else{
-    V = start$Vt
-    alpha = c(start$center)
-    Phi = c(start$dispersion)
-    if (length(Phi) ==1)(Phi = rep(Phi, p))
-    Phi[Phi<=0] = 0.1
+    if (phi_flag)
+      Phi <- apply(weights * (X - mu) ^ 2 / fam$variance(mu), 2, mean)
+  } else {
+    V <- start$Vt
+    alpha <- c(start$center)
+    if (phi_flag) {
+      Phi <- c(start$dispersion)
+      if (length(Phi) == 1) Phi <- rep(Phi, p)
+      Phi[Phi <= 0] <- 0.01
+    }
   }
-  phi_flag = check_DispersionUpdate(fam)
-  if(phi_flag == FALSE){Phi = 1}
 
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
   m <- length(gq$weights)
@@ -513,12 +517,12 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
   like_list <- rep(0, control$maxit + 1)
 
 
-  if(eval_likeli){
-  like_list[1] <- marg_neglikeli(X = X, center = alpha,
-                                V = V, family = fam,
-                                weights = weights,
-                                L_prior = lambda_prior,
-                                ngq = ngq, dispersion = Phi)
+  if (eval_likeli) {
+    like_list[1] <- marg_neglikeli(X = X, center = alpha,
+                                   V = V, family = fam,
+                                   weights = weights,
+                                   L_prior = lambda_prior,
+                                   ngq = ngq, dispersion = Phi)
   }
   eval_time <- 0
 
@@ -538,10 +542,10 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
       gi$reweight(-.5 * devi - lw_ref, log_weights = TRUE, normalize = TRUE)
       L[(i - 1) * m + 1:m, ] <- gi$nodes
       iw[(i - 1) * m + 1:m] <- gi$weights
-      S[(i - 1) * m + 1:m,] <- tcrossprod(gi$weights, bs$diag_s)
+      S[(i - 1) * m + 1:m,] <- tcrossprod(gi$weights, bs$diag_s) # FIXME: needed?
     }
     # [ M-step: fit alpha and V ]
-    # Sij = w_ij / [(g'(\mu_ij))62 * phi_j * Var(\mu_ij) ]
+    # Sij = w_ij / [(g'(\mu_ij))^2 * phi_j * Var(\mu_ij) ]
     dev_new <- 0
     Lo <- cbind(1, L)
     for (j in 1:p) {
@@ -557,22 +561,25 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
       # dev_new <- dev_new + gmc$deviance
 
       xj <- kronecker(X[, j], rep(1, m))
-      LL <- sweep(Lo, 1, S[,j], '*')
-      H <- crossprod(LL, Lo)
-
+      wj <- iw * kronecker(weights[, j], rep(1, m))
       eta_jm <- c(tcrossprod(L, V[j,, drop = FALSE])) + alpha[j]
-      mu_jm <- family$linkinv(eta_jm)
-      z_jm <- eta_jm + (xj - mu_jm) /fam$mu.eta(eta_jm)
-      b_jm <- crossprod(LL, z_jm)
-
+      mu_jm <- fam$linkinv(eta_jm)
+      v_jm <- fam$variance(mu_jm)
+      w_jm <- wj * v_jm
+      z_jm <- wj * (xj - mu_jm)
+      if (!check_canonical(fam)) { # adjust weights?
+        te_jm <- fam$mu.eta(eta_jm) / v_jm
+        w_jm <- w_jm * te_jm ^ 2
+        z_jm <- z_jm * te_jm
+      }
+      b_jm <- crossprod(Lo, w_jm * eta_jm + z_jm)
+      H <- crossprod(Lo, Lo * w_jm)
       beta <- gsym_solve(H, b_jm)
       alpha[j] <- beta[1]; V[j,] <- beta[-1]
-      dev_new <- dev_new + sum(family$dev.resids(xj, mu_jm, wt = iw))
+      dev_new <- dev_new + sum(fam$dev.resids(xj, mu_jm, wt = wj))
 
       # [update dispersion]
-      if(phi_flag == TRUE){
-      Phi[j] <- sum((xj - mu_jm)^2 / family$variance(mu_jm) / n * iw)
-      }
+      if (phi_flag) Phi[j] <- mean(wj * (xj - mu_jm) ^ 2 / v_jm)
     }
     if (eval_likeli) {
         start <- Sys.time()
@@ -600,7 +607,7 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights = 1,
 
 
 
-fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights = 1,
+fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights,
                       lambda_prior =list(mean = rep(0, q), precision = rep(1,q)),
                       control = list(), Phi = 1, eval_size = 500,
                       eval_likeli = FALSE, start = NULL, ...) {
@@ -609,24 +616,26 @@ fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights = 1,
   fam <- if (is.function(family)) family() else family
 
   # [initialize weights]
-  if (is.null(weights)) weights <- matrix(1, nrow = n, ncol = p)
+  if (missing(weights)) weights <- 1
   if (length(weights) == 1)
-    weights <- rep(weights, n * p)else {
-      if (is.vector(weights)) {
-        if (length(weights) != n)
-          stop("inconsistent number of weights")
-        else
-          weights <- rep(weights, p)
-      } else {
-        if (nrow(weights) != n && ncol(weights) != p)
-          stop("inconsistent number of weights")
-      }
+    weights <- rep(weights, n * p)
+  else {
+    if (is.vector(weights)) {
+      if (length(weights) != p)
+        stop("inconsistent number of weights")
+      else
+        weights <- weights[gl(p, n)] # kronecker(weights, rep(1, n))
+    } else {
+      if (nrow(weights) != n && ncol(weights) != p)
+        stop("inconsistent number of weights")
     }
+  }
   dim(weights) <- dim(X)
 
-
   # [initialize iteration]
-  if (is.null(start)){
+  phi_flag <- check_DispersionUpdate(fam)
+  if (!phi_flag) Phi <- rep(1, p)
+  if (is.null(start)) {
     mu <- family_initialize(X, weights, fam)
     eta <- fam$linkfun(mu)
     scale_eta <- scale(eta, scale = FALSE) # center
@@ -634,16 +643,16 @@ fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights = 1,
     S_ <- cov(eta)
     ss_ <- symm_eigen(S_)
     V <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`)
-    Phi <- apply((X - mu)^2/fam$variance(mu), 2, mean)
-  }else{
+    if (phi_flag) Phi <- apply(weights * (X - mu) ^ 2 / fam$variance(mu), 2, mean)
+  } else {
     V <- start$Vt
     alpha <- c(start$center)
-    Phi <- c(start$dispersion)
-    if (length(Phi) ==1)(Phi <- rep(Phi, p))
-    Phi[Phi<=0] <- 0.1
+    if (phi_flag) {
+      Phi <- c(start$dispersion)
+      if (length(Phi) == 1) Phi <- rep(Phi, p)
+      Phi[Phi <= 0] <- 0.01
+    }
   }
-  phi_flag <- check_DispersionUpdate(fam)
-  if(phi_flag == FALSE){Phi <- rep(1, p)}
 
   # [initialize integration]
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
@@ -655,7 +664,7 @@ fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights = 1,
 
   # [initialize mc likelihood]
   like_list <- rep(0, control$maxit + 1)
-  if(eval_likeli){
+  if (eval_likeli) {
     like_list[1] <- marg_neglikeli(X = X, center = alpha,
                                    V = V, family = fam,
                                    weights = weights,
@@ -700,17 +709,16 @@ fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights = 1,
         xj <- cbind(1, gi$nodes)
         z[j, ] <- z[j, ] + crossprod(xj, Wj * etaj + rj)
         H[j, ] <- H[j, ] + c(crossprod(xj, xj * Wj))
-        #TODO: check with Luis
-        if(phi_flag == TRUE){Phi_new[j] <- Phi_new[j] + sum((X[i,j] - muj)^2 / varmuj / n * wj)}
+        if (phi_flag)
+          Phi_new[j] <- Phi_new[j] + mean(wj * (X[i, j] - muj) ^ 2 / varmuj)
         dev_new <- dev_new + sum(fam$dev.resids(rep(X[i, j], m), muj, wj))
       }
     }
     # [ M-step: fit alpha and V ]
     for (j in 1:p) {
-
       betaj <- gsym_solve(matrix(H[j, ], nrow = q + 1), z[j, ])
       alpha[j] <- betaj[1]; V[j, ] <- betaj[-1]
-      if(phi_flag == TRUE){Phi[j] <- Phi_new[j]}
+      if (phi_flag) Phi[j] <- Phi_new[j] / p
     }
 
 
