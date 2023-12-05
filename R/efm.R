@@ -658,7 +658,7 @@ fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights,
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
   m <- length(gq$weights)
   lambda_prior <- list(mean = rep(0, q), precision = rep(1, q))
-  lw_ref <- -.5 * apply(gq$nodes, 1, function (v) sum(v ^ 2))
+  lw_ref <- -.5 * apply(gq$nodes, 1, norm2) ^ 2 # approx posterior
   dev <- Inf
 
 
@@ -677,10 +677,9 @@ fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights,
     # [ E-step: lambda | x ]
     H <- matrix(0, nrow = p, ncol = (q + 1) ^ 2)
     z <- matrix(0, nrow = p, ncol = q + 1)
-    Phi_new <- rep(0, p) #reset Phi to 0
-
+    res <- numeric(p)
     dev_new <- 0
-    for (i in 1:n) {
+    for (i in seq_len(n)) {
       bs <- bsglm(V, X[i, ], lambda_prior, offset = alpha, family = fam,
                   weights = weights[i, ], dispersion = Phi, return_hessian = TRUE)
 
@@ -689,18 +688,18 @@ fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights,
       gi <- gq$clone()$location_scale(bs$coef, bs$hessian, squared = TRUE)
       # refine weights with importance
       mu <- fam$linkinv(tcrossprod(V, gi$nodes) + alpha)
-      devi <- apply(mu, 2,
-                    function (mui) sum(fam$dev.resids(X[i,], mui, rep(1, p))))
-      devi <- devi + apply(gi$nodes, 1, function (v) sum(v ^ 2))
+      devi <- apply(mu, 2, function (mui)
+                    sum(fam$dev.resids(X[i,], mui, weights[i, ] / Phi)))
+      devi <- devi + apply(gi$nodes, 1, norm2) ^ 2 # add log prior
       gi$reweight(-.5 * devi - lw_ref, log_weights = TRUE, normalize = TRUE)
 
-      for (j in 1:p) { # fit column regressions
+      for (j in seq_len(p)) { # fit column regressions
         etaj <- drop(gi$nodes %*% V[j, ] + alpha[j])
         muj <- fam$linkinv(etaj)
         varmuj <- fam$variance(muj)
         wj <- weights[i, j] * gi$weights
-        Wj <- wj * varmuj / Phi[j]
-        rj <- wj * (X[i, j] - muj) / Phi[j]
+        Wj <- wj * varmuj
+        rj <- wj * (X[i, j] - muj)
         if (!check_canonical(fam)) { # adjust weights?
           thetaetaj <- fam$mu.eta(etaj) / varmuj
           Wj <- Wj * thetaetaj ^ 2
@@ -709,18 +708,16 @@ fa_gqem2 <- function (X, q, ngq, family = gaussian(), weights,
         xj <- cbind(1, gi$nodes)
         z[j, ] <- z[j, ] + crossprod(xj, Wj * etaj + rj)
         H[j, ] <- H[j, ] + c(crossprod(xj, xj * Wj))
-        if (phi_flag)
-          Phi_new[j] <- Phi_new[j] + mean(wj * (X[i, j] - muj) ^ 2 / varmuj)
-        dev_new <- dev_new + sum(fam$dev.resids(rep(X[i, j], m), muj, wj))
+        res[j] <- res[j] + sum(fam$dev.resids(rep(X[i, j], m), muj, wj))
       }
     }
-    # [ M-step: fit alpha and V ]
-    for (j in 1:p) {
+    # [ M-step: fit alpha, V, and Phi ]
+    for (j in seq_len(p)) {
       betaj <- gsym_solve(matrix(H[j, ], nrow = q + 1), z[j, ])
       alpha[j] <- betaj[1]; V[j, ] <- betaj[-1]
-      if (phi_flag) Phi[j] <- Phi_new[j] / p
     }
-
+    dev_new <- sum(res / Phi + n * log(Phi))
+    if (phi_flag) Phi <- res / n
 
     # [ update mc likelihood]
     if (eval_likeli) {
