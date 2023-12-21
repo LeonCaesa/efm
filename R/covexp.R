@@ -36,7 +36,7 @@ if (length(argv) > 0){
   n_repeats <- as.numeric( argv[2] )
   d <- as.numeric( argv[3] )
 }
-# exp_idx = 4; n_repeats = 1; d = 16
+# exp_idx = 2; n_repeats = 1; d = 16
 print(c(exp_idx, n_repeats, d))
 set.seed(n_repeats)
 
@@ -50,7 +50,7 @@ switch(exp_idx,
          factor_family <- quasipoisson()},
        "3" = {
          dispersion_star <- 1; factor_weights <- rpois(n*d, 20) + 1; dim(factor_weights) = c(n,d)
-         factor_family <- binomial()}, #todo: check why fa-gqem not working
+         factor_family <- binomial()},
        "4" = {
          dispersion_star <- 1; factor_weights <- 1
          factor_family <- poisson()},
@@ -58,7 +58,7 @@ switch(exp_idx,
 )
 
 
-save_dir = paste('/projectnb/dmfgrp/efm/CovResult/', factor_family$family, '/', sep = '')
+save_dir = paste('/projectnb/dmfgrp/efm/CovResult1209/', factor_family$family, '/', sep = '')
 dir.create(file.path(save_dir), showWarnings = FALSE)
 
 

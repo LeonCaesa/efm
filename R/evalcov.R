@@ -33,24 +33,45 @@ metric_cov <- function(esti_cov, actual_cov){
 }
 
 
+# TODO: check why l2 normalized >1
+# load("/projectnb/dmfgrp/efm/CovResult1209/negbinom(20)/_total_466.RData")
+# actual_cov <- true_cov
+# #esti_cov <- fagqem_esti
+# esti_cov <- naive_esti
+#
+# # [method 1]
+# sigma_half <- chol(ginv(actual_cov))
+# inside_norm <- sigma_half %*% (esti_cov - actual_cov) %*% t(sigma_half)
+# eigen_normalized <- eigen(inside_norm, only.values = TRUE)
+# l2_normalized = sqrt(sum( eigen_normalized$values^2) ) *d^(-1/2)
+#
+# # [method 1]
+# input_diff <- esti_cov %*% ginv(actual_cov) - diag(1, d)
+# sum(diag(input_diff)^2) * d^(-1/2)
+
 #d_list = seq(10, 100, by = 10); n = 500
 # factor_family = quasipoisson()
+# load_dir = '/projectnb/dmfgrp/efm/CovResult1209/quasipoisson/'
 # load_dir = '/projectnb/dmfgrp/efm/CovResult/quasipoisson/'
+
 
 # factor_family = negative.binomial(2)
 # load_dir = '/projectnb/dmfgrp/efm/CovResult/negbinom_phi2/'
 
 # factor_family = negative.binomial(20)
-# load_dir = '/projectnb/dmfgrp/efm/CovResult/Negative Binomial(20)/'
+# load_dir = '/projectnb/dmfgrp/efm/CovResult1209/Negative Binomial(20)/'
+#load_dir = '/projectnb/dmfgrp/efm/CovResult1001/Negative Binomial(20)_Fagqem/Negative Binomial(20)/'
 
-factor_family = poisson()
-load_dir = '/projectnb/dmfgrp/efm/CovResult/poisson/'
+factor_family = binomial()
+load_dir = '/projectnb/dmfgrp/efm/CovResult1209/binomial/'
+
+# factor_family = poisson()
+# load_dir = '/projectnb/dmfgrp/efm/CovResult1209/poisson/'
+#load_dir = '/projectnb/dmfgrp/efm/CovResult1001/poisson/'
 
 #d_list = seq(16, 1000, by = 100); n = 756
 #d_list = seq(16, 716, by = 100); n = 756
-d_list = seq(16, 366, by = 50); n = 756
-
-
+d_list = seq(16, 466, by = 50); n = 756
 
 
 
@@ -81,12 +102,14 @@ for (d in d_list){
     fagqem_name <- paste(paste(load_dir, 'fageqm', d, repeat_idx, sep = '_'), '.RData', sep = '')
     load(fagqem_name)
 
+    if (grepl("Negative Binomial", factor_family$family)) truth$phi <- 1
+
     true_cov <- marg_var(truth$center, truth$V, family = factor_family,
                          ngq = 15, dispersion = truth$phi, L_prior = truth$L_prior)
     fagqem_esti <- marg_var(efm_fagqem$center, efm_fagqem$V,
                             family = factor_family, ngq = 15,
                             dispersion = efm_fagqem$dispersion, L_prior = truth$L_prior)
-    naive_esti <- cov(truth$X)
+    naive_esti <- cov(truth$X/truth$weights)
 
     c(l2fnorm, l2entrophy, l2normalized):=metric_cov(naive_esti, true_cov)
     output_metrics <- cbind(rbind(l2fnorm,l2entrophy,l2normalized), metric_names, d, 'naive', repeat_idx)
@@ -165,7 +188,7 @@ plot_neglikli = filter(neglikeli_df, !(esti_method %in% c('truth')))
 
 ggplot(plot_neglikli) + geom_point(aes(x = as.numeric(iter), y = log(neglikeli),
                                        colour = as.factor(esti_method))) +
-    facet_wrap(~d, scales = "free")
+    facet_wrap(~as.factor(d), scales = "free")
 
 
 # Question:

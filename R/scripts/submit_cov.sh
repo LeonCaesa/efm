@@ -19,9 +19,9 @@ echo "=========================================================="
 module load R/4.1.2
 exp_idx=4
 n_repeats=$SGE_TASK_ID
-#n_repeats=1
+#n_repeats=6
 
-for (( d=16; d<=500; d+= 50)); do
+for (( d=66; d<=500; d+= 50)); do
     echo "Running experiments for:  (exp_idx, repeat_idex, d) = (${exp_idx}, ${n_repeats}, ${d})"
     R -q --slave --vanilla --args $exp_idx $n_repeats $d < /projectnb/dmfgrp/efm/R/covexp.R
 done

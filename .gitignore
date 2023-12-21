@@ -4,7 +4,7 @@
 .Rproj.user/
 
 # Experiment Result
-CovResult/
+CovResult*/
 submit_cov.sh.o*
 
 # Session Data files

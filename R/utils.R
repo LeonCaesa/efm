@@ -78,11 +78,11 @@ pdf_calc <-
       poisson = function(x, mu, weights, dispersion = 1)
         weights *  dpois(x, mu, log = log_),
       quasipoisson = function(x, mu, weights, dispersion)
-        weights * dquasipois(x, mu, weights, dispersion, log = log_),
+        weights * dquasipois(x, mu, weights, dispersion, log = log_), #TODO: check if should multiply weights
       quasibinomial= function(x, mu, weights, dispersion)
-        weights * dquasibinom(x, mu, weights, dispersion, log = log_),
+        weights * dquasibinom(x, mu, weights, dispersion, log = log_), #TODO: check if should multiply weights
       binomial = function(x, mu, weights, dispersion = 1)
-        weights * dbinom(x * weights, weights, mu, log = log_),
+        dbinom(x * weights, weights, mu, log = log_),
       negbinom = function(x, mu, weights, dispersion = 1)
         weights *  dnbinom(x,  1/(family$variance(1)-1), mu = mu, log = log_),
       Gamma = function(x, mu, weights, dispersion)
