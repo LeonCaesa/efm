@@ -332,7 +332,6 @@ PosSample_Moments <-function(LX_row, Vt, center, factor_family,
   var_row = factor_family$variance(mu_row)
   mueta_row = factor_family$mu.eta(eta_row)
 
-
   scale_var = 1/sweep(var_row, 2, dispersion/weights , '*')
   scale_var = sweep(scale_var, 2, mueta_row, '*')
   hessian_L = crossprod(sweep(Vt, 1, scale_var, "*"), Vt)
@@ -452,11 +451,11 @@ generate_cov <- function(n, d, L_prior, V_prior, center,
   X <- generate_data(family= family, eta = eta_LV,
                     dispersion = phi, weights =weights)
 
-  true_likeli <- marg_neglikeli(X = X/weights, center = center, V = V0,
-                                family = family, weights = weights,
-                                L_prior = L_prior, dispersion = phi)
-  # true_likeli2 <- SML_neglikeli(V0, family, X, sample_size = 500, L_prior = L_prior,
-  #                              center = center, dispersion = phi, weights = weights)
+#   true_likeli <- marg_neglikeli(X = X/weights, center = center, V = V0,
+#                                 family = family, weights = weights,
+#                                 L_prior = L_prior, dispersion = phi)
+  true_likeli <- SML_neglikeli(V0, family, X/weights, sample_size = 500, L_prior = L_prior,
+                               center = center, dispersion = phi, weights = weights)
 
   list(X = X, L0 = L0, V0 = V0, phi = phi, L_prior = L_prior,
        center = center, weights = weights, true_likeli = true_likeli )

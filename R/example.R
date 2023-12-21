@@ -1,4 +1,4 @@
-setwd('/projectnb/dmfgrp/efm/')
+setwd('/Users/a743069/Desktop/efm/')
 source('./R/utils.R')
 source('./R/efm.R')
 library(mvtnorm)
@@ -10,14 +10,14 @@ set.seed(1)
 d = 50
 n = 500
 q = 3
-dispersion_star = 20
+dispersion_star = 2
 adam_control = adam.control(max_epoch = 20, batch_size = 128,
                             step_size = 0.2, rho = 0, abs_tol = 1e-6,
                             beta1 = 0.9, beta2 = 0.999, epsilon = 10^-8)
 sample_control = sample.control(sample_size = 500, eval_size = 500)
 
-factor_family = negative.binomial(dispersion_star)
-# factor_family = quasipoisson()
+# factor_family = negative.binomial(dispersion_star)
+factor_family = quasipoisson()
 factor_weights = 1
 
 # factor_family = Gamma(link = 'log')
@@ -64,28 +64,21 @@ init <- NULL
 #              Vt = svd(truth$X, nu = q, nv = q)$v)
 
 
+ngq <- 15
+control <- list(maxit = 20, epsilon = 1e-6, trace = TRUE)
 
 # [Gradient]
 lapl_result <- efm(truth$X/factor_weights, factor_family,
                                  rank = q, weights = factor_weights,
-                                 start = init, algo ='lapl',  adam_control = adam_control,
-                                 sample_control = sample_control, eval_likeli = TRUE,
+                                 start = init, algo ='em',  adam_control = adam_control,
+                                 sample_control = sample_control, em_control = control,
+                                 eval_likeli = TRUE, ngq= ngq,
                                  lambda_prior = L_prior)
 
 
 # [EM Newton]
-ngq <- 15
-control <- list(maxit = 20, epsilon = 1e-6, trace = TRUE)
 start = Sys.time()
-res2 <- fa_gqem2(X, q, ngq, family =factor_family, control = control)
-end = Sys.time()
-time2 = end - start
-print(time2)
-
-
-start = Sys.time()
-res <- fa_gqem(X, q, ngq, family =factor_family, control = control,
-               Phi = dispersion_start)
+res <- fa_gqem(truth$X, q, ngq, family =factor_family, control = control, eval_likeli = TRUE)
 end = Sys.time()
 time1 = end - start
 print(time1)
@@ -105,15 +98,15 @@ print(time1)
 
 # [Param comparison]
 plot(lapl_result$like_list)
-cbind(dispersion_start, lapl_result$dispersion, dispersion_star)
-matrix(cbind(center_start, lapl_result$center, center_star), ncol = 3)
-cbind(Vstart, lapl_result$V, V_star)
+cbind(dispersion_start, lapl_result$dispersion, truth$phi)
+matrix(cbind(center_start, lapl_result$center, truth$center), ncol = 3)
+cbind(Vstart, lapl_result$V, truth$V0)
 
 
 # [Covariance comparison]
-num_esti_cov = cov(X)
+num_esti_cov = cov(truth$X)
 efm_esti_cov = marg_var(lapl_result$center, lapl_result$V, lapl_result$family, ngq = 15)
-efm_true_cov = marg_var(center_star, V_star, lapl_result$family, ngq = 15)
+efm_true_cov = marg_var(truth$center, truth$V0, lapl_result$family, ngq = 15)
 
 
 mse_efm = mean((efm_esti_cov- efm_true_cov)^2)
