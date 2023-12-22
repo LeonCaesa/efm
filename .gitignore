@@ -6,8 +6,11 @@
 
 
 # Experiment Result
+R/scripts/
 CovResult*/
+OptiResult*/
 submit_cov.sh.o*
+*.pdf
 
 # Session Data files
 .RData

@@ -14,7 +14,7 @@ dispersion_star = 2
 adam_control = adam.control(max_epoch = 20, batch_size = 128,
                             step_size = 0.2, rho = 0, abs_tol = 1e-6,
                             beta1 = 0.9, beta2 = 0.999, epsilon = 10^-8)
-sample_control = sample.control(sample_size = 500, eval_size = 500)
+sample_control = sample.control(sample_size = 500, eval_size = 1500)
 
 # factor_family = negative.binomial(dispersion_star)
 factor_family = quasipoisson()

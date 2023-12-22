@@ -309,7 +309,7 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
   like_list <- rep(0, control$maxit + 1)
   if (eval_likeli) {
     like_list[1] <- SML_neglikeli(V = V, factor_family = fam, X = X,
-                                sample_size = sample_control$sample_size, L_prior = lambda_prior,
+                                sample_size = eval_size, L_prior = lambda_prior,
                                 center = alpha, dispersion = Phi, weights = weights)}
   eval_time <- 0
 
@@ -363,7 +363,7 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
     if (eval_likeli) {
       start <- Sys.time()
       like_list[it + 1] <- SML_neglikeli(V = V, factor_family = fam, X = X,
-                                sample_size = sample_control$sample_size, L_prior = lambda_prior,
+                                sample_size = eval_size, L_prior = lambda_prior,
                                 center = alpha, dispersion = Phi, weights = weights)
       plot(like_list[1:(it +1)])
       end <- Sys.time()
@@ -416,7 +416,7 @@ efm <- function(x,
                   beta1 = 0.9,
                   beta2 = 0.999,
                   epsilon = 10^-8),
-                sample_control = sample.control(sample_size = 50, eval_size = 50),
+                sample_control = sample.control(sample_size = 50, eval_size = 500),
                 em_control = list(),
                 ngq = 15,
                 eval_likeli = FALSE,
@@ -428,7 +428,7 @@ efm <- function(x,
   if (algo == 'em'){
     result <- fa_gqem(X = x, q = rank, ngq, family = factor_family, weights = weights,
                       lambda_prior = lambda_prior,
-                      control = em_control,  eval_size = 500,
+                      control = em_control,  eval_size = sample_control$eval_size,
                       eval_likeli = eval_likeli, start = start)
     return(result)
     }
@@ -474,7 +474,7 @@ efm <- function(x,
 
   total_iter <- adam_control$max_epoch * as.integer(n / adam_control$batch_size)
   like_list <- rep(0, total_iter + 1)
-  like_list[1] <-SML_neglikeli(V = Vt, factor_family = factor_family, X = x, sample_size = sample_control$sample_size, L_prior = L_prior,
+  like_list[1] <-SML_neglikeli(V = Vt, factor_family = factor_family, X = x, sample_size = sample_control$eval_size, L_prior = L_prior,
                                 center = center, dispersion = dispersion, weights = weights)
 
   eval_time <-0
@@ -522,7 +522,6 @@ efm <- function(x,
       )
 
       grad = lapply(grad, "*" ,n / adam_control$batch_size)
-
       # [Adam lr decay]
       adam_t = (epoch - 1) * as.integer(n / adam_control$batch_size) + k
       lr_schedule = adam_control$step_size / (1 + 0.1 * adam_t ^ adam_control$rho)
@@ -536,10 +535,12 @@ efm <- function(x,
       Vt = Vt - Vt_update
       center = center - center_update
 
+
       if (phi_flag == TRUE){
         dispersion = dispersion - c(dispersion_update)
         invalid_flag = dispersion<0
         dispersion[invalid_flag] = 0.1}
+
 
       #[Identifiability]
       if (identify_) {
@@ -550,7 +551,7 @@ efm <- function(x,
       # [evaluate marginal likelihood]
       if (eval_likeli) {
         start <- Sys.time()
-        like_list[adam_t + 1] <- SML_neglikeli(V = Vt, factor_family = factor_family, X = x, sample_size = sample_control$sample_size, L_prior = L_prior,
+        like_list[adam_t + 1] <- SML_neglikeli(V = Vt, factor_family = factor_family, X = x, sample_size = sample_control$eval_size, L_prior = L_prior,
                                 center = center, dispersion = dispersion, weights = weights)
         plot(like_list[1: (adam_t + 1)])
         end <- Sys.time()
