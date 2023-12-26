@@ -11,13 +11,16 @@ mat_add <- function (A, B, add_cond = is.vector(A)) {
 }
 
 # "Robust" eigendecomposition of symmetric matrix A
+# question: logic behind sqrt(.Machine$double.eps)
 symm_eigen <- function (A, rank_tol = sqrt(.Machine$double.eps)) {
   ea <- eigen(A, symmetric = TRUE)
   V <- ea$vectors; d <- ea$values
   valid <- ea$values > max(rank_tol * ea$values[1], 0)
   if (!all(valid)) {
+    #browser()
     ea$vectors <- ea$vectors[, valid, drop = FALSE]
     ea$values <- ea$values[valid]
+    # ea$values[!valid] <- max(rank_tol * ea$values[1], 0)
   }
   ea
 }
@@ -225,16 +228,6 @@ Lapl_grad <- function(X_batch, Vt,
                            return_hessian = FALSE
                            )
            ))
-  #unlist(L_mle[1,1])
-  #dim(matrix(unlist(L_mle[,4]), nrow = n)) # check the order
-  # question, returning a list of variable
-
-  # end = Sys.time()
-  # print(end- start)
-
-  #browser()
-  #head(L_mle)
-
 
   eta_mle <- sweep(tcrossprod(L_mle, Vt), 2 , center, '+')
   mu_mle <- factor_family$linkinv(eta_mle)
@@ -493,7 +486,6 @@ adam_update <- function(adam_param, grad_, adam_control,
   v_candidate<- adam_control$beta1 * adam_param$v  + (1 - adam_control$beta1) * grad_
   s_candidate <- adam_control$beta2 * adam_param$s  + (1 - adam_control$beta2) * grad_^2
 
-  #browser()
   if (!is.null(adam_param$ams_grad)){
     adam_param$ams_grad <- pmax(adam_param$ams_grad, s_candidate)
     s_update <- adam_param$ams_grad

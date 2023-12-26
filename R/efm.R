@@ -277,7 +277,6 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
 
   # [initialize iteration]
   phi_flag <- check_DispersionUpdate(fam)
-  if (!phi_flag) Phi <- rep(1, p)
   if (is.null(start)) {
     mu <- family_initialize(X, weights, fam)
     eta <- fam$linkfun(mu)
@@ -293,9 +292,10 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
     if (phi_flag) {
       Phi <- c(start$dispersion)
       if (length(Phi) == 1) Phi <- rep(Phi, p)
-      Phi[Phi <= 0] <- 0.01
     }
   }
+  if (!phi_flag) Phi <- rep(1, p)
+  Phi[Phi <= 0] <- 0.01
 
   # [initialize integration]
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
@@ -312,7 +312,6 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
                                 sample_size = eval_size, L_prior = lambda_prior,
                                 center = alpha, dispersion = Phi, weights = weights)}
   eval_time <- 0
-
   for (it in 1:control$maxit) {
     # [ E-step: lambda | x ]
     H <- matrix(0, nrow = p, ncol = (q + 1) ^ 2)
@@ -324,6 +323,8 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
                   weights = weights[i, ], dispersion = Phi, return_hessian = TRUE)
 
       bs$hessian$values <- 1 / bs$hessian$values # invert first
+      # bs$hessian$values[bs$hessian$values <=0] <- min(bs$hessian$values[bs$hessian$values >0])
+      # bs$hessian$values[is.infinite(bs$hessian$values)] <- max(bs$hessian$values[!is.infinite(bs$hessian$values)])
 
       gi <- gq$clone()$location_scale(bs$coef, bs$hessian, squared = TRUE)
       # refine weights with importance
@@ -347,10 +348,14 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
         }
         xj <- cbind(1, gi$nodes)
         z[j, ] <- z[j, ] + crossprod(xj, Wj * etaj + rj)
+        #if(sum(is.na(z))!=0){browser()}
+
+
         H[j, ] <- H[j, ] + c(crossprod(xj, xj * Wj))
         res[j] <- res[j] + sum(fam$dev.resids(rep(X[i, j], m), muj, wj))
       }
     }
+
     # [ M-step: fit alpha, V, and Phi ]
     for (j in seq_len(p)) {
       betaj <- gsym_solve(matrix(H[j, ], nrow = q + 1), z[j, ])
@@ -458,18 +463,19 @@ efm <- function(x,
     S_ <- cov(eta)
     ss_ <- symm_eigen(S_)
     Vt <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`)
-    dispersion = apply((x - mu)^2/factor_family$variance(mu), 2, mean)
+    dispersion = apply(weights * (x - mu)^2/factor_family$variance(mu), 2, mean)
   } else {
     Vt = start$Vt
     center = start$center
     dispersion = start$dispersion
     if (length(dispersion) ==1)(dispersion = rep(dispersion, p))
-    dispersion[dispersion<=0] = 0.1
     if (nrow(Vt) != p || ncol(Vt) != rank)
       stop("dimensions of V are inconsistent")
   }
   phi_flag = check_DispersionUpdate(factor_family)
+  dispersion[dispersion<=0] = 0.1
   if(phi_flag == FALSE){dispersion = 1}
+
 
 
   total_iter <- adam_control$max_epoch * as.integer(n / adam_control$batch_size)

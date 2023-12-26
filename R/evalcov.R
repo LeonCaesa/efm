@@ -62,8 +62,8 @@ metric_cov <- function(esti_cov, actual_cov){
 # load_dir = '/projectnb/dmfgrp/efm/CovResult1209/Negative Binomial(20)/'
 #load_dir = '/projectnb/dmfgrp/efm/CovResult1001/Negative Binomial(20)_Fagqem/Negative Binomial(20)/'
 
-factor_family = binomial()
-load_dir = '/projectnb/dmfgrp/efm/CovResult1209/binomial/'
+# factor_family = binomial()
+# load_dir = '/projectnb/dmfgrp/efm/CovResult1209/binomial/'
 
 # factor_family = poisson()
 # load_dir = '/projectnb/dmfgrp/efm/CovResult1209/poisson/'
@@ -71,9 +71,7 @@ load_dir = '/projectnb/dmfgrp/efm/CovResult1209/binomial/'
 
 #d_list = seq(16, 1000, by = 100); n = 756
 #d_list = seq(16, 716, by = 100); n = 756
-d_list = seq(16, 466, by = 50); n = 756
-
-
+d_list = seq(66, 466, by = 50); n = 756
 
 
 # [To store Cov Error]
@@ -91,73 +89,71 @@ colnames(neglikeli_array) <- c('naive', 'fqgqem', names_algo)
 
 metric_names = c('l2frobenius', 'l2entrophy', 'l2normalized')
 
-for (repeat_idx in 1:5){
-
-  d_count = 1
-for (d in d_list){
-    print( c(repeat_idx, d))
-
-    truth_name <- paste(paste(load_dir, 'truth', d, repeat_idx, sep = '_'), '.RData', sep = '')
-    load(truth_name)
-    fagqem_name <- paste(paste(load_dir, 'fageqm', d, repeat_idx, sep = '_'), '.RData', sep = '')
-    load(fagqem_name)
-
-    if (grepl("Negative Binomial", factor_family$family)) truth$phi <- 1
-
-    true_cov <- marg_var(truth$center, truth$V, family = factor_family,
-                         ngq = 15, dispersion = truth$phi, L_prior = truth$L_prior)
-    fagqem_esti <- marg_var(efm_fagqem$center, efm_fagqem$V,
-                            family = factor_family, ngq = 15,
-                            dispersion = efm_fagqem$dispersion, L_prior = truth$L_prior)
-    naive_esti <- cov(truth$X/truth$weights)
-
-    c(l2fnorm, l2entrophy, l2normalized):=metric_cov(naive_esti, true_cov)
-    output_metrics <- cbind(rbind(l2fnorm,l2entrophy,l2normalized), metric_names, d, 'naive', repeat_idx)
-    error_matrix <- rbind(error_matrix, output_metrics)
-    neglikeli_matrix <- rbind(neglikeli_matrix, cbind(1, truth$true_likeli, d, 'truth', repeat_idx))
 
 
-    c(l2fnorm, l2entrophy, l2normalized):=metric_cov(fagqem_esti, true_cov)
-    output_metrics = cbind(rbind(l2fnorm,l2entrophy,l2normalized), metric_names, d, 'fagqem', repeat_idx)
-    error_matrix <- rbind(error_matrix, output_metrics)
-    neglikeli_matrix <- rbind(neglikeli_matrix, cbind(1:length(efm_fagqem$like_list), efm_fagqem$like_list, d, 'fagqem', repeat_idx))
+family_list <- c('quasipoisson', 'negbinom(20)', 'poisson', 'binomial')
 
-    # count_algo = 3
-    # for(algo_ in names_algo){
-    #     efm_name <- paste(paste(load_dir, 'efm', algo_, d, repeat_idx, sep = '_'), '.RData', sep = '')
-    #     load(efm_name)
-    #
-    #     tryCatch(
-    #       # This is what I want to do...
-    #       {
-    #         efm_esti <- marg_var(efm_result$center, efm_result$V,
-    #                              family = factor_family, ngq = 15,
-    #                              dispersion = efm_result$dispersion, L_prior = truth$L_prior)
-    #
-    #         c(l2fnorm, l2entrophy, l2normalized):=metric_cov(efm_esti, true_cov)
-    #         output_metrics = cbind(rbind(l2fnorm,l2entrophy,l2normalized), metric_names, d, algo_, repeat_idx)
-    #         error_matrix <- rbind(error_matrix, output_metrics)
-    #         neglikeli_matrix <- rbind(neglikeli_matrix, cbind(1:length(efm_fagqem$like_list), efm_result$like_list, d, algo_, repeat_idx))
-    #       },
-    #       # ... but if an error occurs, tell me what happened:
-    #       error=function(error_message) {
-    #         c(l2frobenius_array[d_count, count_algo, repeat_idx],
-    #           l1entropy_array[d_count, count_algo, repeat_idx],
-    #           l2normalized_array[d_count, count_algo, repeat_idx]) := c(NA, NA, NA)
-    #       })
-    #
-    #     count_algo = count_algo + 1
-    # } #end of adam algo
-    # d_count = d_count + 1
-}
-}
+for (family_name in family_list){
 
-# [Create error df for analysis]
-error_matrix <- error_matrix[-1, ]; neglikeli_matrix <- neglikeli_matrix[-1,]
-error_df <- data.frame(error_matrix)
-rownames(error_df ) <- 1:nrow(error_df )
-colnames(error_df) =c('error', 'error_type', 'd', 'esti_method', 'repeat_idx')
-error_df[c('error', 'd' )] = apply(error_df[c('error', 'd' )], 2, as.numeric)
+    load_dir = paste('/projectnb/dmfgrp/efm/CovResult1209', family_name, '', sep = '/')
+
+
+    factor_family <- switch(family_name, 'quasipoisson' = quasipoisson(),
+                           'negbinom(20)' = negative.binomial(20),
+                           'poisson' = poisson(),
+                           'binomial' = binomial())
+
+    # [To store Cov Error]
+    error_matrix <- matrix(ncol = 5)
+    neglikeli_matrix<-matrix(ncol = 5)
+
+    for (repeat_idx in 1:20){
+
+      d_count = 1
+        for (d in d_list){
+
+            print( c(family_name, repeat_idx, d))
+
+            truth_name <- paste(paste(load_dir, 'truth', d, repeat_idx, sep = '_'), '.RData', sep = '')
+            load(truth_name)
+            fagqem_name <- paste(paste(load_dir, 'fageqm', d, repeat_idx, sep = '_'), '.RData', sep = '')
+            load(fagqem_name)
+
+            if (grepl("Negative Binomial", factor_family$family)) truth$phi <- 1
+
+            true_cov <- marg_var(truth$center, truth$V, family = factor_family,
+                                 ngq = 15, dispersion = truth$phi, L_prior = truth$L_prior)
+            fagqem_esti <- marg_var(efm_fagqem$center, efm_fagqem$V,
+                                    family = factor_family, ngq = 15,
+                                    dispersion = efm_fagqem$dispersion, L_prior = truth$L_prior)
+            naive_esti <- cov(truth$X/truth$weights)
+
+            c(l2fnorm, l2entrophy, l2normalized):=metric_cov(naive_esti, true_cov)
+            output_metrics <- cbind(rbind(l2fnorm,l2entrophy,l2normalized), metric_names, d, 'naive', repeat_idx)
+            error_matrix <- rbind(error_matrix, output_metrics)
+            neglikeli_matrix <- rbind(neglikeli_matrix, cbind(1, truth$true_likeli, d, 'truth', repeat_idx))
+
+
+            c(l2fnorm, l2entrophy, l2normalized):=metric_cov(fagqem_esti, true_cov)
+            output_metrics = cbind(rbind(l2fnorm,l2entrophy,l2normalized), metric_names, d, 'fagqem', repeat_idx)
+            error_matrix <- rbind(error_matrix, output_metrics)
+            neglikeli_matrix <- rbind(neglikeli_matrix, cbind(1:length(efm_fagqem$like_list), efm_fagqem$like_list, d, 'fagqem', repeat_idx))
+        } # end of d
+    } # end of repeat_idx
+
+    # [Create error df for analysis]
+    error_matrix <- error_matrix[-1, ]; neglikeli_matrix <- neglikeli_matrix[-1,]
+    error_df <- data.frame(error_matrix)
+    rownames(error_df ) <- 1:nrow(error_df )
+    colnames(error_df) =c('error', 'error_type', 'd', 'esti_method', 'repeat_idx')
+    error_df[c('error', 'd' )] = apply(error_df[c('error', 'd' )], 2, as.numeric)
+
+
+    # [Save the result]
+    save_dir = paste(load_dir, 'total_466_20', '.RData', sep = '')
+    save(error_matrix, file =  save_dir)
+}# end of family
+
 
 
 
