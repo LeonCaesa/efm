@@ -18,7 +18,7 @@ if (length(argv) > 0){
   d <- as.numeric( argv[3] )
   q <- as.numeric( argv[4] )
 }
-# family_idx = 1; algo_idx = 4; d = 10; q = 2
+# family_idx = 1; algo_idx = 3; d = 10; q = 2
 # Print the values
 paste("family index:", family_idx)
 #paste("sample_idx:", sample_idx)
@@ -103,7 +103,7 @@ init <- init_family(truth$X/truth$weights, truth$weights, q, factor_family, sd_n
 
 
 
-save_dir = '/projectnb/dmfgrp/efm/OptiResult1226/'
+load_dir = '/projectnb/dmfgrp/efm/OptiResult1226/'
 
 
 if (algo_idx<=2){
@@ -113,7 +113,7 @@ if (algo_idx<=2){
                              eval_size = 1500)
 
 
-      save_name <- paste(save_dir, paste( algo_list[algo_idx],
+      save_name <- paste(load_dir, paste( algo_list[algo_idx],
                        name_list[family_idx], paste('s', sample_control$sample_size, sep =''),
                             paste('d', d, sep = ''),
                             paste('q', q, sep = ''),
@@ -144,7 +144,7 @@ if (algo_idx<=2){
   sample_control <- list(sample_size = sample_list[sample_idx],
                          eval_size = 1500)
 
-  save_name <- paste(save_dir, paste( algo_list[algo_idx],
+  save_name <- paste(load_dir, paste( algo_list[algo_idx],
             name_list[family_idx], paste('s', sample_control$sample_size, sep =''),
             paste('d', d, sep = ''),
             paste('q', q, sep = ''),
@@ -165,7 +165,8 @@ if (algo_idx<=2){
     end = Sys.time()
     efm_time = as.numeric(difftime(end, start, units = 's')) - efm_result$eval_time
     efm_result$efm_time = efm_time
-    save(efm_result, file = save_name)}
+    save(efm_result, file = save_name)
+    }
 }
 
 

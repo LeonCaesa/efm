@@ -8,7 +8,7 @@ file_dir = '/projectnb/dmfgrp/efm/OptiResult1226/' #family_init + rnorm
 family_namelist <- c('negbinom', 'poisson', 'binomial')
 algo_names <- c('ps', 'sml', 'em', 'lapl')
 sample_list <- c(50, 300, 500)
-d_list <- c(5, 10)
+d_list <- c(5, 10, 512)
 
 
 n = 512; d=512; max_epoch = 25; q =2
