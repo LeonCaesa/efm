@@ -251,7 +251,7 @@ sample.control <- function(sample_size = 50,
 #' @param start Initialization point, a list containing V, Phi and center
 #' @return Estimation of projection matrix `V`.
 fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
-                      lambda_prior =list(mean = rep(0, q), precision = rep(1,q)),
+                      lambda_prior = list(mean = rep(0, q), precision = rep(1, q)),
                       control = list(), eval_size = 500,
                       eval_likeli = FALSE, start = NULL, ...) {
   n <- nrow(X); p <- ncol(X)
@@ -282,7 +282,7 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
     eta <- fam$linkfun(mu)
     scale_eta <- scale(eta, scale = FALSE) # center
     alpha <- attr(scale_eta, "scaled:center")
-    S_ <- cov(eta)
+    S_ <- cov(scale_eta)
     ss_ <- symm_eigen(S_)
     V <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`)
     if (phi_flag) Phi <- apply(weights * (X - mu) ^ 2 / fam$variance(mu), 2, mean)
@@ -296,14 +296,13 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
   }
   if (!phi_flag) Phi <- rep(1, p)
   Phi[Phi <= 0] <- 0.01
+  Phi <- rep(1, p) # FIXME: workaround
 
   # [initialize integration]
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
   m <- length(gq$weights)
-  lambda_prior <- list(mean = rep(0, q), precision = rep(1, q))
   lw_ref <- -.5 * apply(gq$nodes, 1, norm2) ^ 2 # approx posterior
   dev <- Inf
-
 
   # [initialize mc likelihood]
   like_list <- rep(0, control$maxit + 1)
@@ -320,7 +319,7 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
     dev_new <- 0
     for (i in seq_len(n)) {
       bs <- bsglm(V, X[i, ], lambda_prior, offset = alpha, family = fam,
-                  weights = weights[i, ], dispersion = Phi, return_hessian = TRUE)
+                  weights = weights[i, ] / Phi, return_hessian = TRUE)
 
       bs$hessian$values <- 1 / bs$hessian$values # invert first
       # bs$hessian$values[bs$hessian$values <=0] <- min(bs$hessian$values[bs$hessian$values >0])
@@ -349,8 +348,6 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
         xj <- cbind(1, gi$nodes)
         z[j, ] <- z[j, ] + crossprod(xj, Wj * etaj + rj)
         #if(sum(is.na(z))!=0){browser()}
-
-
         H[j, ] <- H[j, ] + c(crossprod(xj, xj * Wj))
         res[j] <- res[j] + sum(fam$dev.resids(rep(X[i, j], m), muj, wj))
       }
