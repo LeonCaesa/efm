@@ -99,7 +99,7 @@ batch_mle <- function(X_batch, Vt, center, factor_family, q, weights = 1) {
     si <- sqrt(S[i, ])
     Vi <- sweep(Vt, 1, si, `*`)[, , drop = FALSE]
     L_mle[i, ] <-
-      gsym_solve(crossprod(Vi), crossprod(Vi, (Z[i, ] * si)))
+      gsym_solve(symm_eigen(crossprod(Vi)), crossprod(Vi, (Z[i, ] * si)))
   }
   return(L_mle)
 }
@@ -296,7 +296,6 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
   }
   if (!phi_flag) Phi <- rep(1, p)
   Phi[Phi <= 0] <- 0.01
-  Phi <- rep(1, p) # FIXME: workaround
 
   # [initialize integration]
   gq <- gaussquadr::GaussQuad$new("gaussian", ngq, q, ...)
@@ -355,7 +354,7 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
 
     # [ M-step: fit alpha, V, and Phi ]
     for (j in seq_len(p)) {
-      betaj <- gsym_solve(matrix(H[j, ], nrow = q + 1), z[j, ])
+      betaj <- gsym_solve(symm_eigen(matrix(H[j, ], nrow = q + 1)), z[j, ])
       alpha[j] <- betaj[1]; V[j, ] <- betaj[-1]
     }
     dev_new <- sum(res / Phi + n * log(Phi))

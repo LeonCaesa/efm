@@ -53,21 +53,22 @@ dispersion_start = rnorm(d, 0, dispersion_star/3)
 dispersion_start = dispersion_start - min(dispersion_start) + 0.1
 
 # [initialize]
-init_family <- function(x, weights, q, factor_family, sd_noise = 1){
+init_family <- function(x, weights, q, factor_family, sd_noise = 0) {
   n = dim(x)[1]; d = dim(x)[2]
   mu <- family_initialize(x, weights, factor_family)
   eta <- factor_family$linkfun(mu)
   scale_eta <- scale(eta, scale = FALSE) # center
   center <- attr(scale_eta, "scaled:center") + rnorm(d, 0, sd_noise)
-  S_ <- cov(eta)
+  S_ <- cov(scale_eta)
   ss_ <- symm_eigen(S_)
-  Vt <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`) + matrix(rnorm(q*d, 0, 1), nrow = d)
-  dispersion = apply(weights * (x - mu)^2/factor_family$variance(mu), 2, mean)
-  return(list(center = center, dispersion = dispersion,Vt = Vt
-  ))
+  Vt <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`) +
+    matrix(rnorm(q*d, 0, sd_noise), nrow = d)
+  dispersion = apply(weights * (x - mu) ^ 2 / factor_family$variance(mu), 2, mean)
+  list(center = center, dispersion = dispersion, Vt = Vt)
 }
 
-init <- init_family(truth$X/truth$weights, truth$weights, q, factor_family, sd_noise = 1)
+#init <- init_family(truth$X/truth$weights, truth$weights, q, factor_family, sd_noise = 1)
+init <- init_family(truth$X/truth$weights, truth$weights, q, factor_family, sd_noise = 0)
 
 
 
@@ -82,9 +83,4 @@ efm_result <- efm(truth$X/factor_weights, factor_family,
                                  sample_control = sample_control, em_control = control,
                                  eval_likeli = TRUE, ngq= ngq,
                                  lambda_prior = L_prior)
-
-
-
-
-
 

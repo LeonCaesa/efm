@@ -108,15 +108,11 @@ check_DispersionUpdate <- function(family){
 }
 
 
-gsym_solve <- function (A, b, tol = sqrt(.Machine$double.eps)) {
-  ea <- eigen(A, symmetric = TRUE)
-  V <- ea$vectors; d <- ea$values
-  valid <- d > max(tol * d[1], 0)
-  if (!all(valid)) {
-    V <- V[, valid, drop = FALSE]; d <- d[valid]
-  }
-  V %*% sweep(crossprod(V, b), 1, d, `/`)
-}
+# solve A * x = b, where A is symmetric with eigendecomposition
+# A = V * diag(d) * V' stored in `ea <- symm_eigen(A)`
+gsym_solve <- function (ea, b)
+  drop(ea$vectors %*% sweep(crossprod(ea$vectors, b), 1, ea$values, `/`))
+
 
 
 # [method for experiment generation]
@@ -185,16 +181,16 @@ bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
       residuals <- residuals * thetaeta
     }
     z <- crossprod(x, W * (eta - offset) + residuals) + beta0
-    H <- mat_add(prior_coef$precision, crossprod(x, x * c(W))) # Hessian
+    H <- mat_add(prior_coef$precision, crossprod(x, x * W)) # Hessian
     eh <- symm_eigen(H)
     #beta <- gsym_solve_bsglm(eh, z)
-    beta <- gsym_solve(H, z)
+    beta <- gsym_solve(eh, z)
 
     eta <- drop(mat_mult(x, beta, nvars == 1)) + offset
     mu <- family$linkinv(eta)
     bd <- beta - prior_coef$mean
-    dev_new <- sum(family$dev.resids(y, mu, weights)/dispersion) +
-      sum(bd * mat_mult(prior_coef$precision, bd))  # FIXME: check
+    dev_new <- sum(family$dev.resids(y, mu, weights)) +
+      sum(bd * mat_mult(prior_coef$precision, bd)) * dispersion  # FIXME: check
     if (control$trace) message("<", it, "> dev = ", dev_new)
     if (it > 1 && abs((dev_new - dev) / (dev + .1)) < control$epsilon) break
     dev <- dev_new
