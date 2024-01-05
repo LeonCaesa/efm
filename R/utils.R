@@ -15,12 +15,10 @@ mat_add <- function (A, B, add_cond = is.vector(A)) {
 symm_eigen <- function (A, rank_tol = sqrt(.Machine$double.eps)) {
   ea <- eigen(A, symmetric = TRUE)
   V <- ea$vectors; d <- ea$values
-  valid <- ea$values > max(rank_tol * ea$values[1], 0)
-  if (!all(valid)) {
-    #browser()
-    ea$vectors <- ea$vectors[, valid, drop = FALSE]
-    ea$values <- ea$values[valid]
-    # ea$values[!valid] <- max(rank_tol * ea$values[1], 0)
+  ea$valid <- ea$values > max(rank_tol * ea$values[1], 0)
+  if (!all(ea$valid)) {
+    ea$vectors <- ea$vectors[, ea$valid, drop = FALSE]
+    ea$values <- ea$values[ea$valid]
   }
   ea
 }

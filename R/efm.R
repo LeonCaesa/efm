@@ -318,9 +318,12 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
     dev_new <- 0
     for (i in seq_len(n)) {
       bs <- bsglm(V, X[i, ], lambda_prior, offset = alpha, family = fam,
-                  weights = weights[i, ] / Phi, return_hessian = TRUE)
+                  weights = weights[i, ] / Phi, return_hessian = TRUE,
+                  control = list(maxit = 1))
 
       bs$hessian$values <- 1 / bs$hessian$values # invert first
+      if (!all(bs$hessian$valid))
+        warning("only ", sum(bs$hessian$valid), " valid eigenvalues")
       # bs$hessian$values[bs$hessian$values <=0] <- min(bs$hessian$values[bs$hessian$values >0])
       # bs$hessian$values[is.infinite(bs$hessian$values)] <- max(bs$hessian$values[!is.infinite(bs$hessian$values)])
 
@@ -357,8 +360,8 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
       betaj <- gsym_solve(symm_eigen(matrix(H[j, ], nrow = q + 1)), z[j, ])
       alpha[j] <- betaj[1]; V[j, ] <- betaj[-1]
     }
-    dev_new <- sum(res / Phi + n * log(Phi))
     if (phi_flag) Phi <- res / n
+    dev_new <- sum(res / Phi + n * log(Phi))
 
     # [ update mc likelihood]
     if (eval_likeli) {
