@@ -18,7 +18,7 @@ if (length(argv) > 0){
   d <- as.numeric( argv[3] )
   q <- as.numeric( argv[4] )
 }
-# family_idx = 1; algo_idx = 3; d = 10; q = 2
+# family_idx = 1; algo_idx = 4; d = 512; q = 2
 # Print the values
 paste("family index:", family_idx)
 #paste("sample_idx:", sample_idx)
@@ -60,7 +60,8 @@ L_prior <- list(mean = rep(0, q),
                 precision =  rep(1,q))
 
 V_prior <- list(mean = rep(0, q),
-                sigma = rep(1, q))
+                sigma = rep(0.3, q))
+                #sigma = rep(1, q))
 center_star <- rep(2, d)
 dispersion_star <- dispersion_list[family_idx]
 
@@ -71,7 +72,7 @@ plot(density(c(truth$X)))
 # [optimization setup]
 adam_control <- list(max_epoch = 25, batch_size = 128,
                      rho = 0, abs_tol =1e-6,
-                     step_size = 0.2,
+                     step_size = 0.03,
                      beta1 = 0.9, beta2 = 0.999,
                      epsilon = 1e-8)
 
@@ -93,17 +94,17 @@ init_family <- function(x, weights, q, factor_family, sd_noise = 1){
       center <- attr(scale_eta, "scaled:center") + rnorm(d, 0, sd_noise)
       S_ <- cov(eta)
       ss_ <- symm_eigen(S_)
-      Vt <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`) + matrix(rnorm(q*d, 0, 1), nrow = d)
+      Vt <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`) + matrix(rnorm(q*d, 0, sd_noise), nrow = d)
       dispersion = apply(weights * (x - mu)^2/factor_family$variance(mu), 2, mean)
 return(list(center = center, dispersion = dispersion,Vt = Vt
 ))
 }
 
-init <- init_family(truth$X/truth$weights, truth$weights, q, factor_family, sd_noise = 1)
+init <- init_family(truth$X/truth$weights, truth$weights, q, factor_family, sd_noise = 0.5)
 
 
 
-load_dir = '/projectnb/dmfgrp/efm/OptiResult1226/'
+load_dir = '/projectnb/dmfgrp/efm/OptiResult0108/'
 
 
 if (algo_idx<=2){
@@ -121,8 +122,7 @@ if (algo_idx<=2){
                      '.RData', sep ='')
 
 
-      if (!file.exists(save_name)){
-        set.seed(1)
+      #if (!file.exists(save_name)){
         start = Sys.time()
         efm_result <- efm(x = truth$X/factor_weights, lambda_prior = L_prior,
                           factor_family = factor_family,
@@ -136,7 +136,8 @@ if (algo_idx<=2){
         end = Sys.time()
         efm_time = as.numeric(difftime(end, start, units = 's')) - efm_result$eval_time
         efm_result$efm_time = efm_time
-        save(efm_result, file = save_name)}
+        save(efm_result, file = save_name)
+      #  }
   }# end of sample idx
 
 }else{
@@ -150,8 +151,7 @@ if (algo_idx<=2){
             paste('q', q, sep = ''),
             paste('T', adam_control$max_epoch, sep= ''), sep = '_'),
      '.RData', sep ='')
-  if (!file.exists(save_name)){
-    set.seed(1)
+  #if (!file.exists(save_name)){
     start = Sys.time()
     efm_result <- efm(x = truth$X/factor_weights, lambda_prior = L_prior,
                       factor_family = factor_family,
@@ -166,7 +166,7 @@ if (algo_idx<=2){
     efm_time = as.numeric(difftime(end, start, units = 's')) - efm_result$eval_time
     efm_result$efm_time = efm_time
     save(efm_result, file = save_name)
-    }
+    #}
 }
 
 

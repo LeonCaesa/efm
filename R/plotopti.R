@@ -3,15 +3,19 @@ library(tidyverse)
 #file_dir = '/projectnb/dmfgrp/efm/OptiResult1221/'
 #family_namelist <- c('negbinom', 'poisson', 'Gamma')
 #file_dir = '/projectnb/dmfgrp/efm/OptiResult1223/'
-file_dir = '/projectnb/dmfgrp/efm/OptiResult1225/' #init true + rnorm
-file_dir = '/projectnb/dmfgrp/efm/OptiResult1226/' #family_init + rnorm
+#file_dir = '/projectnb/dmfgrp/efm/OptiResult1225/' #init true + rnorm
+#file_dir = '/projectnb/dmfgrp/efm/OptiResult1226/' #family_init + rnorm(1)
+#file_dir = '/projectnb/dmfgrp/efm/OptiResult0104/' #family_init + rnorm(0.3); alpha = 0.05
+#file_dir = '/projectnb/dmfgrp/efm/OptiResult0106/' #family_init + rnorm(0.5); alpha = 0.5(d=5), 0.05(d=10)
+#file_dir = '/projectnb/dmfgrp/efm/OptiResult0107/' #family_init + rnorm(0.5); alpha=0.1, Vsigma = 0.5
+file_dir = '/projectnb/dmfgrp/efm/OptiResult0108/' #family_init + rnorm(0.5); alpha=0.05, Vsigma = 0.3
 family_namelist <- c('negbinom', 'poisson', 'binomial')
 algo_names <- c('ps', 'sml', 'em', 'lapl')
 sample_list <- c(50, 300, 500)
-d_list <- c(5, 10, 512)
+d_list <- c(512)
 
 
-n = 512; d=512; max_epoch = 25; q =2
+n = 512; max_epoch = 25; q =2
 summary_table = data.frame( matrix(ncol = 7)); colnames(summary_table) = c('loss', 'Model', 'size', 'algo', 'time', 'd', 'q')
 for (d in d_list){
   for (family_idx in 1:3){
@@ -70,18 +74,22 @@ summary_table= summary_table [-1,]
 summary_table$time = as.numeric(summary_table$time)
 
 
-summary_table = filter(summary_table, time<75, algo %in% c('ps', 'sml', 'lapl', 'em'),
+summary_table = filter(summary_table, time<=25000, algo %in% c('ps', 'sml', 'lapl', 'em'),
                        Model %in% c('poisson', 'binomial', 'negbinom'), size %in% c(50, 300, 500))
 #summary_table$d = as.factor(summary_table$d)
 
-#png(filename = '/projectnb/dmfgrp/Laplacian_EFM/Figure/EFMOptiComparep512LargeV.png', width = 8, height = 4, units = 'in', res = 300)
+#png(filename = '/projectnb/dmfgrp/efm/figures/EFMOptiComparep5.png', width = 8, height = 4, units = 'in', res = 300)
+#png(filename = '/projectnb/dmfgrp/efm/figures/EFMOptiComparep10.png', width = 8, height = 4, units = 'in', res = 300)
+png(filename = '/projectnb/dmfgrp/efm/figures/EFMOptiComparep512.png', width = 8, height = 4, units = 'in', res = 300)
 ggplot(summary_table) + geom_point(aes(x = as.numeric(time),
                                        y= log(as.numeric(loss)/n),
                                        shape = size,
-                                       colour = algo))+
-  theme_bw() + xlab('Time (s)') + ylab('Avged Negative likelihood') + facet_wrap(~Model + d, scales = "free", nrow = 3) +
+                                       colour = algo), alpha = 0.8
+                                   )+
+  theme_bw() + xlab('Adam Steps') + ylab('Avged Negative likelihood') + facet_wrap(~Model, scales = "free") +
   theme(legend.position="bottom")
-#dev.off()
+dev.off()
+
   #+
     # scale_shape_manual(values = c(0 ,4, 1),
     #                    labels = c('50','300','500')) +

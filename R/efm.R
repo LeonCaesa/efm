@@ -171,11 +171,14 @@ SML_neglikeli <- function(Vt,
     eta_simu <- tcrossprod(L_sample, Vt)
     eta_simu = sweep(eta_simu, 2, center, "+")
     mu_simu <- factor_family$linkinv(eta_simu)
-    likeli_simu [, b] <- rowSums(family_pdf(X,
-                                            mu = mu_simu,
-                                            weights = weights,
-                                            dispersion = dispersion_eval
-                                            ), na.rm =  TRUE)
+
+    family_density <- family_pdf(X,
+               mu = mu_simu,
+               weights = weights,
+               dispersion = dispersion_eval)
+    family_density[is.na(family_density)] <- max(family_density[!is.na(family_density)])
+
+    likeli_simu [, b] <- rowSums(family_density)
   }
   neg_likeli = -sum(rowLogSumExps(likeli_simu) - log(sample_size))
   #neg_likeli = -sum(likeli_simu)/sample_size
@@ -377,8 +380,8 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
     if (control$trace) {
       message("[", it, "] dev = ", dev_new)
     }
-    if (it > 1 && abs((dev_new - dev) / (dev + .1)) < control$epsilon) break
-    dev <- dev_new
+    # if (it > 1 && abs((dev_new - dev) / (dev + .1)) < control$epsilon) break
+    # dev <- dev_new
   }
   sv <- svd(V, nv = 0); V <- sweep(sv$u, 2, sv$d * sign(sv$u[1,]), "*")
   list(center = alpha, V = V, like_list = like_list[like_list!=0], eval_time = eval_time,

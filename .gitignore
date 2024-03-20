@@ -11,6 +11,7 @@ CovResult*/
 OptiResult*/
 submit_cov.sh.o*
 *.pdf
+figures/
 
 # Session Data files
 .RData

@@ -179,7 +179,7 @@ bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
       residuals <- residuals * thetaeta
     }
     z <- crossprod(x, W * (eta - offset) + residuals) + beta0
-    H <- mat_add(prior_coef$precision, crossprod(x, x * W)) # Hessian
+    H <- mat_add(prior_coef$precision, crossprod(x, sweep(x, 1, W, '*'))) # Hessian
     eh <- symm_eigen(H)
     #beta <- gsym_solve_bsglm(eh, z)
     beta <- gsym_solve(eh, z)
