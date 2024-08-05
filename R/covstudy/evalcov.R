@@ -1,3 +1,4 @@
+setwd('/projectnb2/dmfgrp/efm')
 source('./R/utils.R')
 source('./R/efm.R')
 library(MASS)

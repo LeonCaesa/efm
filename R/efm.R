@@ -308,6 +308,7 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
 
   # [initialize mc likelihood]
   like_list <- rep(0, control$maxit + 1)
+
   if (eval_likeli) {
     like_list[1] <- SML_neglikeli(V = V, factor_family = fam, X = X,
                                 sample_size = eval_size, L_prior = lambda_prior,
@@ -438,7 +439,8 @@ efm <- function(x,
                       control = em_control,  eval_size = sample_control$eval_size,
                       eval_likeli = eval_likeli, start = start)
     return(result)
-    }
+  }
+
 
   n <- nrow(x); p <- ncol(x)
   if (length(weights) == 1)
@@ -482,7 +484,8 @@ efm <- function(x,
 
   total_iter <- adam_control$max_epoch * as.integer(n / adam_control$batch_size)
   like_list <- rep(0, total_iter + 1)
-  like_list[1] <-SML_neglikeli(V = Vt, factor_family = factor_family, X = x, sample_size = sample_control$eval_size, L_prior = L_prior,
+
+  like_list[1] <-SML_neglikeli(V = Vt, factor_family = factor_family, X = x, sample_size = sample_control$eval_size, L_prior = lambda_prior,
                                 center = center, dispersion = dispersion, weights = weights)
 
   eval_time <-0
