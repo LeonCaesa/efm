@@ -1,6 +1,6 @@
-setwd('/projectnb2/dmfgrp/efm')
-source('./R/utils.R')
-source('./R/efm.R')
+library(efm)
+#setwd('/projectnb2/dmfgrp/efm')
+#source('../R/utils.R')
 library(MASS)
 library(tidyverse)
 n_gq <- 15
@@ -186,14 +186,4 @@ plot_neglikli = filter(neglikeli_df, !(esti_method %in% c('truth')))
 ggplot(plot_neglikli) + geom_point(aes(x = as.numeric(iter), y = log(neglikeli),
                                        colour = as.factor(esti_method))) +
     facet_wrap(~as.factor(d), scales = "free")
-
-
-# Question:
-# 0. What does it imply for the variance if we have multiple V giving the same neg-likelihood.
-# 1. The second order optimization adjust the step size accordingly, hence has decent cov estimate # need to check how variance calcs is related to this
-# 2. Lapl converges with decent likelihood, but variance deviate the most -- #need to check how variance is calculated, which parameter affect the most
-# 3. Cvg to decent V requires 1. decreasing step size 2. large sample size for PS
-  # 3.1. PS/LAPL/SML step size doesn't decay to 0 as decay rate depends on the problem -- # need to play for convergence scienor
-  # 3.2. PS additionally has problem of sample size
-# 4. Identification issue on the covariance estimate?
 

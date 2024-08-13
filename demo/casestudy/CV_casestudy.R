@@ -1,4 +1,4 @@
-setwd("/projectnb/dmfgrp/efm/R")
+#setwd("/projectnb/dmfgrp/efm/R")
 if (!require("devtools")) install(devtools)
 if (!require("MASS")) install(MASS)
 if (!require("R.matlab")) install(R.matlab)
@@ -132,5 +132,4 @@ g1 = plot_fit(as.tibble(t(crop_x[pic_index,])),  19, 19, 1) + ggtitle('Original 
 g2 = plot_fit(as.tibble(mu_sim),  19, 19, 6)  + ggtitle('Posterior Simulation') + theme(plot.title = element_text(hjust = 0.5))
 
 grid.arrange(g1,g2, ncol =2)
-
 

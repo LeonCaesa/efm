@@ -1,6 +1,5 @@
-setwd('/Users/caesa/Desktop/efm/')
-source('./R/efm.R')
-source('./R/utils.R')
+library(efm)
+#source('../R/utils.R')
 library(mvtnorm)
 library(matrixStats)
 library(MASS)
@@ -51,7 +50,6 @@ init <- list(Vt= Vstart, center = center_start, dispersion = dispersion_start)
 ngq <- 15
 control <- list(maxit = 20, epsilon = 1e-6, trace = TRUE)
 
-# [Luis's code with dispersion support -- Faster]
 start = Sys.time()
 res2 <- fa_gqem2(truth$X/factor_weights, q, ngq, family = factor_family, control = control,
                  eval_likeli = TRUE, weights = factor_weights, Phi = dispersion_start)
@@ -59,7 +57,6 @@ end = Sys.time()
 time2 = end - start
 print(time2)
 
-# [Original fagqem code --Slower]
 start = Sys.time()
 res <- fa_gqem(truth$X/factor_weights, q, ngq, family =factor_family, control = control,
                eval_likeli = TRUE, weights = factor_weights, Phi = dispersion_start)

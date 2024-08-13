@@ -1,6 +1,6 @@
-setwd('/projectnb/dmfgrp/efm/')
-source('./R/utils.R')
-source('./R/efm.R')
+library(efm)
+#setwd('/projectnb/dmfgrp/efm/')
+#source('../R/utils.R')
 library(mvtnorm)
 library(matrixStats)
 library(MASS)
@@ -58,8 +58,8 @@ switch(exp_idx,
 )
 
 
-save_dir = paste('/projectnb/dmfgrp/efm/CovResult1209/', factor_family$family, '/', sep = '')
-dir.create(file.path(save_dir), showWarnings = FALSE)
+#save_dir = paste('/projectnb/dmfgrp/efm/CovResult1209/', factor_family$family, '/', sep = '')
+#dir.create(file.path(save_dir), showWarnings = FALSE)
 
 
 

@@ -1,13 +1,13 @@
-source('./R/utils.R')
-source('./R/efm.R')
+library(efm)
+#source('../R/utils.R')
 library(MASS)
 library(lemon)
 library(tidyverse)
 
 
 #file_name = '_total_466.RData'
-file_name = 'total_466_20.RData'
-file_dir = '/projectnb/dmfgrp/efm/CovResult1209/'
+#file_name = 'total_466_20.RData'
+#file_dir = '/projectnb/dmfgrp/efm/CovResult1209/'
 
 family_list <- c('quasipoisson', 'negbinom(20)', 'poisson', 'binomial')
 

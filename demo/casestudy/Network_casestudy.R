@@ -1,13 +1,13 @@
+library(efm)
 if (!require("multinet")) install(multinet)
 if (!require("tidyverse")) install(tidyverse)
 if (!require("plotly")) install(plotly)
 if (!require("mvtnorm")) install(mvtnorm)
 
 
-setwd('/projectnb2/dmfgrp/efm')
-if (!exists("foo", mode="function")) source('./R/utils.R')
-if (!exists("foo", mode="function")) source('./R/efm.R')
-if (!exists("foo", mode="function")) source("./R/casestudy/util_casestudy.R")
+#setwd('/projectnb2/dmfgrp/efm')
+#if (!exists("foo", mode="function")) source('../R/utils.R')
+if (!exists("foo", mode="function")) source("util_casestudy.R")
 
 # library(mvtnorm)
 # library(matrixStats)

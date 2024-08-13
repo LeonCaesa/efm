@@ -1,6 +1,6 @@
-setwd('/projectnb/dmfgrp/efm/')
-source('./R/utils.R')
-source('./R/efm.R')
+library(efm)
+#setwd('/projectnb/dmfgrp/efm/')
+#source('../R/utils.R')
 library(mvtnorm)
 library(matrixStats)
 library(MASS)
@@ -104,7 +104,7 @@ init <- init_family(truth$X/truth$weights, truth$weights, q, factor_family, sd_n
 
 
 
-load_dir = '/projectnb/dmfgrp/efm/OptiResult0108/'
+#load_dir = '/projectnb/dmfgrp/efm/OptiResult0108/'
 
 
 if (algo_idx<=2){
@@ -168,9 +168,4 @@ if (algo_idx<=2){
     save(efm_result, file = save_name)
     #}
 }
-
-
-
-
-
 
