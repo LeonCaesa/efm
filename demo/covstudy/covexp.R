@@ -1,9 +1,11 @@
-library(efm)
-#setwd('/projectnb/dmfgrp/efm/')
-#source('../R/utils.R')
-library(mvtnorm)
-library(matrixStats)
-library(MASS)
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+if (!require("mvtnorm")) install(mvtnorm)
+if (!require("matrixStats")) install(matrixStats)
+if (!require("MASS")) install(MASS)
+
+if (!exists("foo", mode="function")) source("../../R/efm.R")
+
+
 
 set.seed(1)
 # [2008 Jianqing.Fan Factor Model Params]

@@ -1,9 +1,10 @@
-library(efm)
-#setwd('/projectnb/dmfgrp/efm/')
-#source('../R/utils.R')
-library(mvtnorm)
-library(matrixStats)
-library(MASS)
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+if (!exists("foo", mode="function")) source("../../R/efm.R")
+if (!exists("foo", mode="function")) source("../../R/utils.R")
+
+if (!require("mvtnorm")) install(mvtnorm)
+if (!require("matrixStats")) install(matrixStats)
+if (!require("MASS")) install(MASS)
 
 
 

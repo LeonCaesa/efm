@@ -1,4 +1,4 @@
-library(tidyverse)
+if (!require("tidyverse")) install(tidyverse)
 
 #file_dir = '/projectnb/dmfgrp/efm/OptiResult1221/'
 #family_namelist <- c('negbinom', 'poisson', 'Gamma')

@@ -1,20 +1,23 @@
-#setwd("/projectnb/dmfgrp/efm/R")
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 if (!require("devtools")) install(devtools)
 if (!require("MASS")) install(MASS)
 if (!require("R.matlab")) install(R.matlab)
 if (!require("tidyverse")) install(tidyverse)
+if (!require("snedata")) install(snedata)
 if (!require("dmf")) install_github("carvalho-research/dmf")
+
 if (!exists("foo", mode="function")) source("util_casestudy.R")
+if (!exists("foo", mode="function")) source("../../R/efm.R")
 
 
 # [for ORL face]
-# X<- readMat('data/ORL_64x64.mat')$fea
-# label = readMat('data/ORL_64x64.mat')$gnd
+X<- t(readMat('data/ORL_64x64.mat')$fea)
+label = readMat('data/ORL_64x64.mat')$gnd
 
 # [for Fasion Mnist] # first 60,000 instances are the training set
-fashion <- download_fashion_mnist()
-X <- as.matrix(fashion[1:2000, -c(785,786)])
-label = fashion[1:2000, 786]
+# fashion <- download_fashion_mnist()
+# X <- as.matrix(fashion[1:2000, -c(785,786)])
+# label = fashion[1:2000, 786]
 
 
 

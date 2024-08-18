@@ -1,8 +1,10 @@
-library(efm)
-#source('../R/utils.R')
-library(MASS)
-library(lemon)
-library(tidyverse)
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+if (!require("tidyverse")) install(tidyverse)
+if (!require("MASS")) install(MASS)
+if (!require("lemon")) install(lemon)
+
+if (!exists("foo", mode="function")) source("../../R/efm.R")
+if (!exists("foo", mode="function")) source("../../R/utils.R")
 
 
 #file_name = '_total_466.RData'

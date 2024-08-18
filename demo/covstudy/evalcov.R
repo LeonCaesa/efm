@@ -1,22 +1,17 @@
-library(efm)
-#setwd('/projectnb2/dmfgrp/efm')
-#source('../R/utils.R')
-library(MASS)
-library(tidyverse)
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+if (!require("matrixStats")) install(matrixStats)
+if (!require("MASS")) install(MASS)
+
+if (!exists("foo", mode="function")) source("../../R/efm.R")
+if (!exists("foo", mode="function")) source("../../R/utils.R")
+
+
+
 n_gq <- 15
 
 
 
 names_algo <- c('lapl', 'sml', 'ps')
-#
-# metric_cov <- function(esti_cov, actual_cov){
-#   d <- dim(esti_cov)[1]
-#   product = esti_cov %*% ginv(actual_cov)
-#   l2_frobenius <- sum((esti_cov - actual_cov)^2)
-#   l1_entropy <- sum(diag(product)) - log (det(product)) - d
-#   l2_normalized <- sum((diag(product) -1)^2)* d^(-1/2)
-#   return(list(l2_frobenius, l1_entropy, l2_normalized))
-# }
 
 metric_cov <- function(esti_cov, actual_cov){
   d <- dim(esti_cov)[1]

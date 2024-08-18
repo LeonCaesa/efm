@@ -1,17 +1,14 @@
-library(efm)
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 if (!require("multinet")) install(multinet)
 if (!require("tidyverse")) install(tidyverse)
 if (!require("plotly")) install(plotly)
 if (!require("mvtnorm")) install(mvtnorm)
+if (!require("matrixStats")) install(matrixStats)
 
 
-#setwd('/projectnb2/dmfgrp/efm')
-#if (!exists("foo", mode="function")) source('../R/utils.R')
 if (!exists("foo", mode="function")) source("util_casestudy.R")
-
-# library(mvtnorm)
-# library(matrixStats)
-# library(MASS)
+if (!exists("foo", mode="function")) source('../../R/utils.R')
+if (!exists("foo", mode="function")) source('../../R/efm.R')
 
 
 
