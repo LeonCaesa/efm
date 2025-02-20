@@ -9,6 +9,7 @@
 R/scripts/
 CovResult*/
 OptiResult*/
+SavedExps/
 submit_cov.sh.o*
 *.pdf
 figures/

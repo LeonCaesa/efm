@@ -136,3 +136,65 @@ g2 = plot_fit(as.tibble(mu_sim),  19, 19, 6)  + ggtitle('Posterior Simulation') 
 
 grid.arrange(g1,g2, ncol =2)
 
+# [------------------check quantized metrics------------------]
+load("/projectnb/dmfgrp/efm/SavedExps/mnist_rank3.RData")
+library(Rtsne)
+library(fpc)
+fit_tsne = Rtsne(X, perplexity=50, theta=0, dims=3, pca = FALSE)
+
+
+num_label <- as.numeric(label)
+plot_nmfdf <- data.frame(cbind(plot_nmfdf, num_label))
+plot_negbin_dmfdf <- data.frame(cbind(dmf_nbinom$L, num_label))
+plot_tsnedf <- data.frame(cbind(fit_tsne$Y, num_label))
+plot_negbin_emfdf <- data.frame(cbind(result_nbinom$L, num_label))
+colnames(plot_nmfdf)<- c('X1', 'X2', 'X3', 'label')
+colnames(plot_negbin_dmfdf)<- c('X1', 'X2', 'X3', 'label')
+colnames(plot_tsnedf)<- c('X1', 'X2', 'X3', 'label')
+colnames(plot_negbin_emfdf)<- c('X1', 'X2', 'X3', 'label')
+
+
+CH_tsne = round(calinhara(plot_tsnedf[,-4], num_label), digits = 2)
+CH_nmf = round(calinhara(plot_nmfdf[,-4], num_label), digits = 2)
+CH_negbin_dmf = round(calinhara(plot_negbin_dmfdf[,-4], num_label), digits = 2)
+CH_negbin_efm = round(calinhara(plot_negbin_emfdf[,-4], num_label), digits = 2)
+
+
+library(nnet) # multinom
+library(rpart) # tree
+library(caret) #knn3 with full prob
+library(HandTill2001)
+plot_lists <- list(plot_nmfdf, plot_negbin_dmfdf, plot_tsnedf, plot_negbin_emfdf)
+model_names <- c('nmf', 'negbin_dmf', 'tsne', 'negbin_efm')
+for (plot_idx in 1:4){
+
+    plot_modeldf <- plot_lists[[plot_idx]][,-4]
+    splitflag = TrainTest_Flag(plot_modeldf, seed_ = 0, train_ratio = 0.5)
+    plot_modeldf$y = num_label
+    splitdata = list(train = plot_modeldf[splitflag$train, ], test = plot_modeldf[splitflag$test, ])
+
+
+    tree_fit = Tree_tuned(splitdata$train)
+    multi_fit = multinom(y~., splitdata$train, trace = FALSE)
+    knn_fit = knn3(y~., splitdata$train, k = 9)
+
+    tree_pred = predict(tree_fit, newdata = splitdata$test)
+    multi_pred = predict(multi_fit, newdata = splitdata$test, type= 'prob')
+    knn_pred = predict(knn_fit, newdata = splitdata$test)
+
+    response = splitdata$test$y
+    htauc_tree = auc(multcap(response = factor(response),predicted = tree_pred))
+    htauc_multi = auc(multcap(response = factor(response), predicted = multi_pred))
+    htauc_knn = auc(multcap(response = factor(response),predicted = knn_pred))
+    ht_scores = c(htauc_tree, htauc_multi, htauc_knn)
+    print(c(model_names[plot_idx], ht_scores))
+}
+
+
+library(plotly)
+plot_ly(plot_tsnedf, x=~X1, y=~X2, z=~X3, type="scatter3d", mode="markers", color=~ as.factor(label),
+        marker = list(size = 3)) %>%
+  layout(legend = list(orientation = "h",   # show entries horizontally
+                       xanchor = "center",  # use center of legend as anchor
+                       x = 0.5), margin = list(t = 0, l = 0, r= 0, b =0))
+

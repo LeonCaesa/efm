@@ -1,4 +1,5 @@
-setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+#setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+setwd('/projectnb/dmfgrp/efm/demo/simustudy')
 if (!exists("foo", mode="function")) source("../../R/efm.R")
 if (!exists("foo", mode="function")) source("../../R/utils.R")
 
@@ -19,7 +20,7 @@ if (length(argv) > 0){
   d <- as.numeric( argv[3] )
   q <- as.numeric( argv[4] )
 }
-# family_idx = 1; algo_idx = 4; d = 512; q = 2
+# family_idx = 2; algo_idx = 1; d = 512; q = 50
 # Print the values
 paste("family index:", family_idx)
 #paste("sample_idx:", sample_idx)
@@ -105,7 +106,7 @@ init <- init_family(truth$X/truth$weights, truth$weights, q, factor_family, sd_n
 
 
 
-#load_dir = '/projectnb/dmfgrp/efm/OptiResult0108/'
+load_dir = '/projectnb/dmfgrp/efm/OptiResult0118_2025/'
 
 
 if (algo_idx<=2){
