@@ -1,5 +1,4 @@
-#setwd(dirname(rstudioapi::getSourceEditorContext()$path))
-setwd('/projectnb/dmfgrp/efm/demo/simustudy')
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 if (!exists("foo", mode="function")) source("../../R/efm.R")
 if (!exists("foo", mode="function")) source("../../R/utils.R")
 

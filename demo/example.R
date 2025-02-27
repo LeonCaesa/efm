@@ -1,5 +1,5 @@
-library(efm)
-#source('../R/utils.R')
+devtools::load_all('../R/utils.R')
+devtools::load_all('../R/efm.R')
 library(mvtnorm)
 library(matrixStats)
 library(MASS)
@@ -79,6 +79,6 @@ efm_result <- efm(truth$X/factor_weights, factor_family,
                                  rank = q, weights = factor_weights,
                                  start = init, algo ='em',  adam_control = adam_control,
                                  sample_control = sample_control, em_control = control,
-                                 eval_likeli = TRUE, ngq= ngq,
+                                 eval_likeli = FALSE, ngq= ngq,
                                  lambda_prior = L_prior)
 
