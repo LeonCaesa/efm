@@ -26,8 +26,8 @@ file_dir = '/projectnb/dmfgrp/efm/OptiResult0118_2025/' #family_init + rnorm(0.5
 #n = 512; max_epoch = 25; d = 512; q_list <- c(10, 20, 30, 40, 50)
 n = 512; max_epoch = 25; d = 512; q_list <- c(6, 8, 12) # choose 3
 family_namelist <- c('binomial')
-# #algo_names <- c('ps', 'sml', 'lapl', 'em')
-algo_names <- c('ps', 'sml', 'lapl')
+algo_names <- c('ps', 'sml', 'lapl', 'em')
+#algo_names <- c('ps', 'sml', 'lapl')
 
 
 sample_list <- c(50, 300, 500)
@@ -51,7 +51,10 @@ for (q in q_list){
           tryCatch({
           load(load_name)
           opti_iter = length(efm_result$like_list)
-          efm_result$efm_time <- as.numeric(efm_result$efm_time,  units="secs")
+          #efm_result$efm_time <- as.numeric(efm_result$efm_time,  units="secs")
+
+          efm_result$efm_time <- as.double(efm_result$efm_time) + as.double(efm_result$eval_time) - as.numeric(efm_result$eval_time,  units="secs")
+
           #time_unit = cumsum(1:opti_iter * efm_result$efm_time/ opti_iter)
           time_unit = 1:length(efm_result$like_list)
           temp_row = cbind( efm_result$like_list, family_namelist[family_idx],
@@ -75,7 +78,8 @@ for (q in q_list){
           {
             load(load_name)
             opti_iter = length(efm_result$like_list)
-            efm_result$efm_time <- as.numeric(efm_result$efm_time,  units="secs")
+            #efm_result$efm_time <- as.numeric(efm_result$efm_time,  units="secs")
+            efm_result$efm_time <- as.double(efm_result$efm_time) + as.double(efm_result$eval_time) - as.numeric(efm_result$eval_time,  units="secs")
             #time_unit = cumsum(1:opti_iter * efm_result$efm_time/ opti_iter)
             time_unit = 1:length(efm_result$like_list)
             temp_row = cbind( efm_result$like_list, family_namelist[family_idx],
@@ -131,6 +135,7 @@ ggplot(summary_table) + geom_point(aes(x = as.numeric(time),
   theme(legend.position="bottom")
 
 time_table <- filter(summary_table, Model %in% c('binomial')) %>% group_by(q, size, algo) %>% summarize(mean_time = mean(comp_time))
+#time_table <- filter(summary_table, Model %in% c('binomial')) %>% group_by(d, size, algo) %>% summarize(mean_time = mean(comp_time))
 
 print(time_table[order(time_table$algo),], n = 30)
 

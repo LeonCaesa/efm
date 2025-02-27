@@ -53,7 +53,6 @@ check_canonical <- function (fam) {
 
 dquasipois <- function(x, mu, weights, dispersion, log = TRUE){
   prob_log = weights/dispersion * (x * log(mu) - mu) - 0.5 * log(dispersion/weights)
-  #TODO: 1/dispersion changes scale dramastically
   if (log){return(prob_log)}else{return(exp(prob_log))}
 }
 
@@ -79,9 +78,9 @@ pdf_calc <-
       poisson = function(x, mu, weights, dispersion = 1)
         weights *  dpois(x, mu, log = log_),
       quasipoisson = function(x, mu, weights, dispersion)
-        weights * dquasipois(x, mu, weights, dispersion, log = log_), #TODO: check if should multiply weights
+        weights * dquasipois(x, mu, weights, dispersion, log = log_),
       quasibinomial= function(x, mu, weights, dispersion)
-        weights * dquasibinom(x, mu, weights, dispersion, log = log_), #TODO: check if should multiply weights
+        weights * dquasibinom(x, mu, weights, dispersion, log = log_),
       binomial = function(x, mu, weights, dispersion = 1)
         dbinom(x * weights, weights, mu, log = log_),
       negbinom = function(x, mu, weights, dispersion = 1)
@@ -114,7 +113,6 @@ gsym_solve <- function (ea, b)
 
 
 # [method for experiment generation]
-# todo: add prior support
 comput_mupos = function(L_row, Vt, factor_family, scale_weights = 1) {
   q = dim(Vt)[2]
   d = dim(Vt)[1]
@@ -292,7 +290,7 @@ SML_grad <- function(Vt, factor_family, X, q, center,
   total_grad_center <- colSums(mc_grad_center/mc_likeli[,,1])
 
   #to avoid numerical issue of dividing a small probability
-  total_grad_v[is.na(total_grad_v)] <- 0 #todo: discuss this numerical workaround with Luis
+  total_grad_v[is.na(total_grad_v)] <- 0
   total_grad_center[is.na(total_grad_center)] <- 0
 
   total_grad_dispersion <- colMeans(grad_simu_dispersion)
@@ -336,7 +334,6 @@ PosSample_Moments <-function(LX_row, Vt, center, factor_family,
   return(list(L_pos = L_pos, Sigma_pos = Sigma_pos))
 }
 
-# todo: PosSample_GradRowV, PosSample_GradRowPhi, PosSample_GradRowCenter
 PosSample_GradTotal <- function(L_row, X_row, center,
                                weight_row, Vt, factor_family,
                                dispersion, sample_size,

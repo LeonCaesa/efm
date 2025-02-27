@@ -5,13 +5,8 @@
 NULL
 #> NULL
 #'
-# TODO:
-# `add more annotation to utils.R
-# `delete dependence on package mvtnorm, MASS, matrixStats
-# `think about better stopping criteria
 
 
-# TODO: how to generate when dispersion<1?
 rqpoisson <- function(n, mu, dispersion){rnbinom(n = n, mu = mu, size = mu/(dispersion-1))}
 #' Generate data according to exponential family distribution given parameter `\eta`
 #'

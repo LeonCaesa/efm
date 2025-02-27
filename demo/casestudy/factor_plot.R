@@ -62,11 +62,14 @@ plot_cfit(as.tibble(t(X[test_idx,])), rnum_pixel, cnum_pixel, num_pic )
 
 L_esti <- t(mapply(ridge_coef, asplit(t(X), 1), asplit( matrix(1, nrow = p, ncol = n), 1), MoreArgs = list(Vt = efm_fit$V, factor_family = efm_fit$family)))
 
+
+#load("/projectnb/dmfgrp/efm/SavedExps/orl_face.RData")
 plot_cfit(as.tibble(t(X[test_idx,])), rnum_pixel, cnum_pixel, num_pic )
 
 plot_cfit(as.tibble(t(L_esti[, 1])), rnum_pixel, cnum_pixel, 1)
 plot_cfit(as.tibble(t(L_esti[, 2])), rnum_pixel, cnum_pixel, 1)
 plot_cfit(as.tibble(t(L_esti[, 3])), rnum_pixel, cnum_pixel, 1)
+plot_cfit(as.tibble(t(L_esti[, 4])), rnum_pixel, cnum_pixel, 1)
 
 
 
