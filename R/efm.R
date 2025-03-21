@@ -408,8 +408,8 @@ efm <- function(x,
                 weights = 1,
                 algo = 'lapl',
                 start = NULL,
-                lambda_prior = list(mean = rep(0, q),
-                                    precision = rep(1, q)),
+                lambda_prior = list(mean = rep(0, rank),
+                                    precision = rep(1, rank)),
                 adam_control = adam.control(
                   max_epoch = 5,
                   batch_size = 32,
@@ -461,7 +461,7 @@ efm <- function(x,
     center <- attr(scale_eta, "scaled:center")
     S_ <- cov(eta)
     ss_ <- symm_eigen(S_)
-    Vt <- sweep(ss_$vectors[, 1:q, drop = FALSE], 2, sqrt(ss_$values[1:q]), `*`)
+    Vt <- sweep(ss_$vectors[, 1:rank, drop = FALSE], 2, sqrt(ss_$values[1:rank]), `*`)
     dispersion = apply(weights * (x - mu)^2/factor_family$variance(mu), 2, mean)
   } else {
     Vt = start$Vt
@@ -480,7 +480,8 @@ efm <- function(x,
   total_iter <- adam_control$max_epoch * as.integer(n / adam_control$batch_size)
   like_list <- rep(0, total_iter + 1)
 
-  like_list[1] <-SML_neglikeli(V = Vt, factor_family = factor_family, X = x, sample_size = sample_control$eval_size, L_prior = lambda_prior,
+  like_list[1] <-SML_neglikeli(V = Vt, factor_family = factor_family, X = x,
+                               sample_size = sample_control$eval_size,  L_prior = lambda_prior,
                                 center = center, dispersion = dispersion, weights = weights)
 
   eval_time <-0
@@ -557,7 +558,7 @@ efm <- function(x,
       # [evaluate marginal likelihood]
       if (eval_likeli) {
         start <- Sys.time()
-        like_list[adam_t + 1] <- SML_neglikeli(V = Vt, factor_family = factor_family, X = x, sample_size = sample_control$eval_size, L_prior = L_prior,
+        like_list[adam_t + 1] <- SML_neglikeli(V = Vt, factor_family = factor_family, X = x, sample_size = sample_control$eval_size, L_prior = lambda_prior,
                                 center = center, dispersion = dispersion, weights = weights)
         plot(like_list[1: (adam_t + 1)])
         end <- Sys.time()

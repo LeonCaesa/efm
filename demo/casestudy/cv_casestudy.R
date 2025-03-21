@@ -5,14 +5,20 @@ if (!require("R.matlab")) install(R.matlab)
 if (!require("tidyverse")) install(tidyverse)
 if (!require("snedata")) install(snedata)
 if (!require("dmf")) install_github("carvalho-research/dmf")
+if (!require("mvtnorm")) install_github("mvtnorm")
 
 if (!exists("foo", mode="function")) source("util_casestudy.R")
-if (!exists("foo", mode="function")) source("../../R/efm.R")
+devtools::load_all('../../R/utils.R')
+devtools::load_all('../../R/efm.R')
+# if (!exists("foo", mode="function")) source("../../R/efm.R")
+# if (!exists("foo", mode="function")) source("../../R/utils.R")
 
 
 # [for ORL face]
 X<- t(readMat('data/ORL_64x64.mat')$fea)
 label = readMat('data/ORL_64x64.mat')$gnd
+# X<- t(readMat('data/ORL_32x32.mat')$fea)
+# label = readMat('data/ORL_32x32.mat')$gnd
 
 # [for Fasion Mnist] # first 60,000 instances are the training set
 # fashion <- download_fashion_mnist()
@@ -26,15 +32,15 @@ n = dim(X)[1]
 d = dim(X)[2]
 phi_star = mean(X)^2/(sd(X)^2 - mean(X))
 factor_family1 = negative.binomial(phi_star)
-rank_esti = onatski_rank(X, factor_family1, q_max = d-5)
-
-eigen_values1= eigen(cov(tcrossprod(rank_esti$L,rank_esti$V)))$value
-plot_eigen = data.frame(negbinom = -diff(eigen_values1)[1:30])
-ggplot(plot_eigen) + geom_point(aes(x= 1:30, y =negbinom)) +
-  xlab('q') +ylab('eigen diff')+
-  ggtitle('Negbinom Eigen Gap') + geom_vline(xintercept = 3)+
-  geom_vline(xintercept = 7)+
-  theme(plot.title = element_text(hjust = 0.5))
+# rank_esti = onatski_rank(X, factor_family1, q_max = d-5)
+#
+# eigen_values1= eigen(cov(tcrossprod(rank_esti$L,rank_esti$V)))$value
+# plot_eigen = data.frame(negbinom = -diff(eigen_values1)[1:30])
+# ggplot(plot_eigen) + geom_point(aes(x= 1:30, y =negbinom)) +
+#   xlab('q') +ylab('eigen diff')+
+#   ggtitle('Negbinom Eigen Gap') + geom_vline(xintercept = 3)+
+#   geom_vline(xintercept = 7)+
+#   theme(plot.title = element_text(hjust = 0.5))
 
 
 
@@ -42,17 +48,76 @@ ggplot(plot_eigen) + geom_point(aes(x= 1:30, y =negbinom)) +
 #q = 3
 #q = 7
 q = 41
-step_size = 0.2
+step_size = 0.05
 #batch_size = 128
 batch_size = 256
-sample_size = 50
+sample_size = 300
 
-dmf_nbinom = dmf(X, factor_family1, q)
-Vt_nbinom = dmf_nbinom$V; Lt_nbinom = dmf_nbinom$L
-result_nbinom = batch_opti(dmf_nbinom$L, batch_size, step_size, X, factor_family = factor_family1, q,
-                           max_epoch = 50,sample_size = sample_size,
-                           beta1 = 0.9, beta2 = 0.999,epislon = 10^-8,
-                           phi_star = phi_star, rho = 0.5, scale_weights = 1, sample_random = TRUE)
+
+# dmf_nbinom = dmf(X, factor_family1, q)
+# Vt_nbinom = dmf_nbinom$V; Lt_nbinom = dmf_nbinom$L
+# (x,
+#   factor_family,
+#   rank,
+#   weights = 1,
+#   algo = 'lapl',
+#   start = NULL,
+#   lambda_prior = list(mean = rep(0, q),
+#                       precision = rep(1, q)),
+#   adam_control = adam.control(
+#     max_epoch = 5,
+#     batch_size = 32,
+#     step_size = 0.1,
+#     rho = 0,
+#     abs_tol = 1e-6,
+#     beta1 = 0.9,
+#     beta2 = 0.999,
+#     epsilon = 10^-8),
+#   sample_control = sample.control(sample_size = 50, eval_size = 500),
+#   em_control = list(),
+#   ngq = 15,
+#   eval_likeli = FALSE,
+#   identify_ = FALSE)
+
+sample_control = sample.control(sample_size = sample_size, eval_size = 500)
+adam_control = adam.control(
+      max_epoch = 50,
+      batch_size = batch_size,
+      step_size = 0.1,
+      rho = 0,
+      abs_tol = 1e-6,
+      beta1 = 0.9,
+      beta2 = 0.999,
+      epsilon = 10^-8)
+
+X = t(X)
+
+
+# load('orl_1024_0303_2025.RData')
+# load('orl_1024_0303_2025_step2.RData')
+load('orl_4096_0305_2025_lapl_step1.RData')
+start_point = list(Vt = result_nbinom$V,
+                   phi = result_nbinom$dispersion,
+                   center = result_nbinom$center)
+step_size = 0.05
+
+
+
+# start_point = NULL
+
+
+result_nbinom = efm(X, factor_family = factor_family1, rank = q, weights = 1, start = start_point,
+                    algo= 'ps', adam_control = adam_control, sample_control = sample_control,
+                    eval_likeli = TRUE)
+
+# save(result_nbinom, file = 'orl_1024_0303_2025_step2.RData')
+save(result_nbinom, file = 'orl_4096_0305_2025_lapl_step2.RData')
+
+
+# result_nbinom = batch_opti(dmf_nbinom$L, batch_size, step_size, X, factor_family = factor_family1, q,
+#                            max_epoch = 50,sample_size = sample_size,
+#                            beta1 = 0.9, beta2 = 0.999,epislon = 10^-8,
+#                            phi_star = phi_star, rho = 0.5, scale_weights = 1, sample_random = TRUE)
 
 
 plot(result_nbinom$like_list,col = 'blue')

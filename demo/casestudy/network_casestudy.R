@@ -86,6 +86,7 @@ A_totl = as.matrix(A_totl)
 
 
 
+
 # [get label]
 attributes_ml(net)
 labels = unlist(get_values_ml(net, "group", actors=data.frame(actor=nodes)))
@@ -157,3 +158,89 @@ plot_ly(data = plot_df, x= ~PC1, y =~ PC2, z =~PC3,  opacity= 1,
         marker = list(size = 5)) %>%
   layout(title = 'Weighted EFM Embedding',
          legend = list(orientation = 'h', xanchor = "center", x = 0.5), margin = m)
+
+
+
+
+
+
+
+# [plot individual network to show sparsity]
+library(fields)
+library("latex2exp")
+net <- ml_aucs()
+network_totl <-  as.igraph(net)
+A_totl <- get.adjacency(network_totl)
+A_totl[A_totl!=0] <- 0
+
+
+
+labels = get_values_ml(net, "group", actors=data.frame(actor= colnames(A_totl)))
+labels[labels=="G2/G3"] = "G3"
+labels[labels=="G2/G6"] = "G2"
+NA_Flag = labels =='NA'
+
+to_sort_nodes = cbind(labels$group, colnames(A_totl))
+sorted_nodes = to_sort_nodes[order(to_sort_nodes[,1]),]
+
+colnames(A_totl) <- sorted_nodes[,2]; rownames(A_totl) <-sorted_nodes[,2]
+A1 <- A_totl; A2 <- A_totl; A3 <- A_totl; A4 <- A_totl; A5 <- A_totl
+
+
+from_actor <- edges_ml(net)$from_actor
+to_actor <- edges_ml(net)$to_actor
+layer_idx <- edges_ml(net)$to_layer
+for (i in 1:length(from_actor)){
+  if (layer_idx[i] == "work"){
+    A1[from_actor[i], to_actor[i]] <- 1
+  }else if(layer_idx[i] == "coauthor"){
+    A2[from_actor[i], to_actor[i]] <- 1
+  }else if(layer_idx[i] == "lunch"){
+    A3[from_actor[i], to_actor[i]] <- 1
+  }else if(layer_idx[i] == "facebook"){
+    A4[from_actor[i], to_actor[i]] <- 1
+  }else if(layer_idx[i]== "leisure"){
+    A5[from_actor[i], to_actor[i]] <- 1
+  }
+}
+g1 <- graph_from_adjacency_matrix(A1, mode='undirected')
+g2 <- graph_from_adjacency_matrix(A2, mode='undirected')
+g3 <- graph_from_adjacency_matrix(A3, mode='undirected')
+g4 <- graph_from_adjacency_matrix(A4, mode='undirected')
+g5 <- graph_from_adjacency_matrix(A5, mode='undirected')
+
+
+# png("/Users/caesa/Desktop/BU PhD/Dissertation/CaseStudy/figures/sparsity_network.png",
+#     units="in", width=12, height=4, res=300)
+par(mfrow=c(1,5), mar=c(5,1,5,1))
+plot(g1, layout=layout.sphere, main="work")
+plot(g2, layout=layout.sphere, main="coauthor")
+plot(g3, layout=layout.sphere, main="lunch")
+plot(g4, layout=layout.sphere, main="facebook")
+plot(g5, layout=layout.sphere, main="leisure")
+# dev.off()
+
+
+image.real <- function(mat, main_name = 'NA') {
+  mat <- t(mat)[,nrow(mat):1]
+  #image.plot(mat, axes = FALSE, main = main_name, xaxt= "n", yaxt= "n")
+  image(mat, axes = FALSE, main = main_name,  col = c("white", "black"), cex = 10)
+  axis(1, at = seq(0, 1, length = nrow(mat)), labels = rownames(mat),
+       tick = FALSE, las = 2)
+  axis(2, at = seq(0, 1, length = ncol(mat)), labels = colnames(mat),
+       tick = FALSE , las = 2)
+  box()
+}
+
+
+#png("/projectnb/dmfgrp/efm/figures/sparsity_network2.png",
+ #   units="in", width=15, height=4, res=300)
+par(mfrow=c(1,5), mar=c(5,3,5,0.5))
+image.real(as_adjacency_matrix(g1, sparse = FALSE), main_name = TeX('\\textbf{$A^{(1)}$-work}'))
+image.real(as_adjacency_matrix(g2, sparse = FALSE), main_name = TeX('\\textbf{$A^{(2)}$-coauthor}'))
+image.real(as_adjacency_matrix(g3, sparse = FALSE), main_name = TeX('\\textbf{$A^{(3)}$-lunch}'))
+image.real(as_adjacency_matrix(g4, sparse = FALSE), main_name = TeX('\\textbf{$A^{(4)}$-facebook}'))
+image.real(as_adjacency_matrix(g5, sparse = FALSE), main_name = TeX('$\\textbf{A^{(5)}$-leisure}'))
+#dev.off()
+
+

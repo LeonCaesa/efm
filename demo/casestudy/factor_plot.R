@@ -1,4 +1,7 @@
 load("/projectnb/dmfgrp/Laplacian_EFM/Result/CVFit/ORLFace_epoch20_algo_lapl_lr0.1_b400_q40_decay_0.5.RData")
+rnum_pixel = 32;cnum_pixel = 32
+
+
 
 if (!require("R.matlab")) install.packages("R.matlab")
 if (!require("tidyverse")) install(tidyverse)
@@ -15,7 +18,7 @@ ridge_coef <- function(X_vec, weight_vec, Vt, factor_family){
                  weights = weight_vec))[-1]
 }
 
-plot_cfit<- function(mu_hat, rnum_pixel, cnum_pixel, num_pic){
+plot_cfit<- function(mu_hat, rnum_pixel, cnum_pixel, num_pic, col_row = NULL){
   pixels_gathered = mu_hat %>%
     mutate(instance = row_number()) %>%
     gather(pixel, value, -instance) %>%
@@ -26,10 +29,18 @@ plot_cfit<- function(mu_hat, rnum_pixel, cnum_pixel, num_pic){
            rgb_groups = factor(pixel %/% (rnum_pixel * rnum_pixel)))
   pixels_gathered = pixels_gathered%>%group_by(instance)%>%mutate(value = (value-mean(value))/sd(value))
   if (length(unique(pixels_gathered$rgb_groups)) ==1){
-    pixels_gathered %>%
+    p_plot <- pixels_gathered %>%
       filter(instance <= num_pic) %>%
       ggplot(aes(x, y)) + geom_raster(aes(fill= value))+
       facet_wrap(~ instance) + scale_fill_gradient(low="black",high="white")
+
+    if (is.null(col_row)){
+      p_plot <- p_plot + facet_wrap(~ instance, scales = "free")
+    }else{
+      p_plot <- p_plot + facet_wrap(~ instance, scales = "free",
+                                    nrow = col_row[1], ncol = col_row[2])
+    }
+
   }else{
     pixels_gathered$rgb_groups = factor(pixels_gathered$rgb_groups, labels = c("R", "G", "B"))
     pixels_gathered =  pixels_gathered %>%pivot_wider(id_cols = c(instance, x, y, pixel, rgb_groups),
@@ -37,12 +48,20 @@ plot_cfit<- function(mu_hat, rnum_pixel, cnum_pixel, num_pic){
       group_by(instance, x,y) %>%mutate(R = mean(R, na.rm = TRUE),
                                         G= mean(G, na.rm = TRUE),
                                         B = mean(B, na.rm = TRUE))%>%ungroup() %>%select(-pixel)%>%distinct()
-    pixels_gathered %>%
+    p_plot <- pixels_gathered %>%
       filter(instance <= num_pic) %>%
       ggplot(aes(x, y)) + geom_raster(aes(fill= rgb(R/255, G/255, B/255)))+
-      scale_fill_identity()+ facet_wrap(~ instance, scales = "free")
+      scale_fill_identity()
+
+    if (is.null(col_row)){
+      p_plot <- p_plot + facet_wrap(~ instance, scales = "free")
+    }else{
+      p_plot <- p_plot + facet_wrap(~ instance, scales = "free",
+                                    nrow = col_row[1], ncol = col_row[2])
+      }
 
   }
+  return (p_plot + coord_flip() + scale_x_reverse())
 }
 
 
@@ -54,8 +73,8 @@ label = readMat(ORL_datadir)$gnd
 n = dim(X)[1];p = dim(X)[2]
 glm_weights = matrix(1, nrow = n, ncol = p)
 
-rnum_pixel = 32;cnum_pixel = 32
-test_idx = 2; num_pic = 4
+
+test_idx = 46; num_pic = 4
 plot_cfit(as.tibble(t(X[test_idx,])), rnum_pixel, cnum_pixel, num_pic )
 
 
@@ -64,16 +83,51 @@ L_esti <- t(mapply(ridge_coef, asplit(t(X), 1), asplit( matrix(1, nrow = p, ncol
 
 
 #load("/projectnb/dmfgrp/efm/SavedExps/orl_face.RData")
+
 plot_cfit(as.tibble(t(X[test_idx,])), rnum_pixel, cnum_pixel, num_pic )
 
-plot_cfit(as.tibble(t(L_esti[, 1])), rnum_pixel, cnum_pixel, 1)
+
+plot_cfit(as.tibble(t(L_esti[, 1:10])), rnum_pixel, cnum_pixel, 1)
 plot_cfit(as.tibble(t(L_esti[, 2])), rnum_pixel, cnum_pixel, 1)
 plot_cfit(as.tibble(t(L_esti[, 3])), rnum_pixel, cnum_pixel, 1)
 plot_cfit(as.tibble(t(L_esti[, 4])), rnum_pixel, cnum_pixel, 1)
 
 
 
+# [eigenface]
+
+svd <- svd( scale(X, scale = FALSE))
+eigVec <- svd$v
+eigVal <- svd$d/(ncol(X)-1)
 
 
+eigeVal_efm <- sort(apply(result_nbinom$V, 2, norm, '2'), decreasing = TRUE)
+
+plot(cumsum(eigVal[1:41])/ sum(eigVal[1:41]), cumsum(eigeVal_efm)/ sum(eigeVal_efm))
 
 
+upto_rank <- 20
+plot(cumsum(eigVal[1:upto_rank])/ sum(eigVal[1:upto_rank]))
+points(cumsum(eigeVal_efm[1:upto_rank])/ sum(eigeVal_efm[1:upto_rank]), col = 'red')
+
+
+# png(filename = '/projectnb/dmfgrp/efm/figures/eigen_orl.png', width = 12, height = 8, units = 'in', res = 300)
+g1 = plot_cfit(as.tibble(t(eigVec[, 1:20])), rnum_pixel, cnum_pixel, 12, col_row = c(4, 3))
+# dev.off()
+#
+# png(filename = '/projectnb/dmfgrp/efm/figures/efmeigen_orl.png', width = 12, height = 8, units = 'in', res = 300)
+g2 = plot_cfit(as.tibble(t(L_esti[, 1:20])), rnum_pixel, cnum_pixel, 12, col_row = c(4, 3))
+# dev.off()
+
+#g3 = plot_cfit(as.tibble(t(result_nbinom$family$linkinv(result_nbinom$V[, 1:40]))), rnum_pixel, cnum_pixel, 40, col_row = c(8, 5))
+# eta_esti = sweep(result_nbinom$V[, 1:10], 1, result_nbinom$center, '+')
+eta_esti = sweep(result_nbinom$V[, 1:10], 1, 0, '+')
+
+g3 = plot_cfit(as.tibble(t(eta_esti)), rnum_pixel, cnum_pixel, 10, col_row = c(8, 5))
+
+library("gridExtra")
+png(filename = '/projectnb/dmfgrp/efm/figures/eigen_orl.png', width = 12, height = 12, units = 'in', res = 300)
+grid.arrange(g2 + ggtitle('EFMFace') + theme(plot.title = element_text(size = 15,hjust = 0.5),legend.position="none"),
+            g1 + ggtitle('EigenFace') + theme(plot.title = element_text( size = 15, hjust = 0.5),legend.position="none"),
+             ncol = 2)
+dev.off()
