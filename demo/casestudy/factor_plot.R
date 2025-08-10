@@ -1,4 +1,9 @@
-load("/projectnb/dmfgrp/Laplacian_EFM/Result/CVFit/ORLFace_epoch20_algo_lapl_lr0.1_b400_q40_decay_0.5.RData")
+# load("/projectnb/dmfgrp/Laplacian_EFM/Result/CVFit/ORLFace_epoch20_algo_lapl_lr0.1_b400_q40_decay_0.5.RData")
+
+# load("/projectnb/dmfgrp/efm/demo/casestudy/orl_1024_0410_2025_rank7.RData")
+load('orl_1024_0410_2025_rank7_unrotated_lapl.RData')
+efm_fit <- result_nbinom
+
 rnum_pixel = 32;cnum_pixel = 32
 
 
@@ -92,21 +97,30 @@ plot_cfit(as.tibble(t(L_esti[, 2])), rnum_pixel, cnum_pixel, 1)
 plot_cfit(as.tibble(t(L_esti[, 3])), rnum_pixel, cnum_pixel, 1)
 plot_cfit(as.tibble(t(L_esti[, 4])), rnum_pixel, cnum_pixel, 1)
 
+plot_cfit(as.tibble(t(efm_fit$V[,1])), rnum_pixel, cnum_pixel, num_pic )
 
 
+
+# [dmf]
+library(dmf)
+dmf_result <- dmf(t(X), family = efm_fit$family, rank = 40)
+dmf_result
 # [eigenface]
 
-svd <- svd( scale(X, scale = FALSE))
+svd <- svd(scale(X, center= TRUE, scale = FALSE))
 eigVec <- svd$v
 eigVal <- svd$d/(ncol(X)-1)
+#eigeVal_efm <- sort(apply(efm_fit$V, 2, norm, '2'), decreasing = TRUE)
+eigeVal_dmf <- sort(apply(dmf_center(dmf_result)$L, 2, norm, '2'), decreasing = TRUE)
 
 
-eigeVal_efm <- sort(apply(result_nbinom$V, 2, norm, '2'), decreasing = TRUE)
+upto_rank <- 40
+plot(eigVal[1:upto_rank]/ sum(eigVal[1:upto_rank]), ylim = c(0, 0.20))
+points(eigeVal_efm[1:upto_rank]/ sum(eigeVal_efm[1:upto_rank]), col = 'red')
+#points(eigeVal_dmf[1:upto_rank]/ sum(eigeVal_dmf[1:upto_rank]), col = 'red')
 
-plot(cumsum(eigVal[1:41])/ sum(eigVal[1:41]), cumsum(eigeVal_efm)/ sum(eigeVal_efm))
 
-
-upto_rank <- 20
+upto_rank <- 40
 plot(cumsum(eigVal[1:upto_rank])/ sum(eigVal[1:upto_rank]))
 points(cumsum(eigeVal_efm[1:upto_rank])/ sum(eigeVal_efm[1:upto_rank]), col = 'red')
 
@@ -131,3 +145,11 @@ grid.arrange(g2 + ggtitle('EFMFace') + theme(plot.title = element_text(size = 15
             g1 + ggtitle('EigenFace') + theme(plot.title = element_text( size = 15, hjust = 0.5),legend.position="none"),
              ncol = 2)
 dev.off()
+
+
+
+
+
+
+
+

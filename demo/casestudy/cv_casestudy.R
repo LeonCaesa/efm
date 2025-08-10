@@ -15,9 +15,9 @@ devtools::load_all('../../R/efm.R')
 
 
 # [for ORL face]
-X<- t(readMat('data/ORL_64x64.mat')$fea)
+X<- readMat('data/ORL_64x64.mat')$fea
 label = readMat('data/ORL_64x64.mat')$gnd
-# X<- t(readMat('data/ORL_32x32.mat')$fea)
+# X<- readMat('data/ORL_32x32.mat')$fea
 # label = readMat('data/ORL_32x32.mat')$gnd
 
 # [for Fasion Mnist] # first 60,000 instances are the training set
@@ -32,7 +32,10 @@ n = dim(X)[1]
 d = dim(X)[2]
 phi_star = mean(X)^2/(sd(X)^2 - mean(X))
 factor_family1 = negative.binomial(phi_star)
+
 # rank_esti = onatski_rank(X, factor_family1, q_max = d-5)
+# save(rank_esti, file = 'orl_rank_1024_0408_2025_lapl_unrotated.RData')
+
 #
 # eigen_values1= eigen(cov(tcrossprod(rank_esti$L,rank_esti$V)))$value
 # plot_eigen = data.frame(negbinom = -diff(eigen_values1)[1:30])
@@ -45,10 +48,9 @@ factor_family1 = negative.binomial(phi_star)
 
 
 
-#q = 3
-#q = 7
-q = 41
-step_size = 0.05
+# q = 3
+q = 7
+# q = 41
 #batch_size = 128
 batch_size = 256
 sample_size = 300
@@ -90,28 +92,41 @@ adam_control = adam.control(
       beta2 = 0.999,
       epsilon = 10^-8)
 
-X = t(X)
+
 
 
 # load('orl_1024_0303_2025.RData')
 # load('orl_1024_0303_2025_step2.RData')
-load('orl_4096_0305_2025_lapl_step1.RData')
-start_point = list(Vt = result_nbinom$V,
-                   phi = result_nbinom$dispersion,
-                   center = result_nbinom$center)
-step_size = 0.05
+# load('orl_4096_0305_2025_lapl_step1.RData')
+# start_point = list(Vt = result_nbinom$V,
+#                    phi = result_nbinom$dispersion,
+#                    center = result_nbinom$center)
 
 
+# start_point =  NULL
 
-# start_point = NULL
+# load("/projectnb/dmfgrp/efm/SavedExps/orl_face_dmf.RData")
+# start_point = list(Vt = dmf_result$L[,1:q], phi = 1, center = matrix(0, ncol = d))
+
+svd <- svd(X)
+start_point = list(Vt = svd$v[,1:q], phi = 1, center = matrix(0, ncol = d))
 
 
 result_nbinom = efm(X, factor_family = factor_family1, rank = q, weights = 1, start = start_point,
-                    algo= 'ps', adam_control = adam_control, sample_control = sample_control,
+                    algo= 'lapl', adam_control = adam_control, sample_control = sample_control,
                     eval_likeli = TRUE)
 
-# save(result_nbinom, file = 'orl_1024_0303_2025_step2.RData')
-save(result_nbinom, file = 'orl_4096_0305_2025_lapl_step2.RData')
+# save(result_nbinom, file = 'orl_1024_0410_2025_rank3.RData')
+# save(result_nbinom, file = 'orl_1024_0410_2025_rank7.RData')
+
+# save(result_nbinom, file = 'orl_1024_0410_2025_rank7_unrotated_lapl.RData')
+# save(result_nbinom, file = 'orl_1024_0410_2025_rank41_unrotated_lapl.RData')
+
+# save(result_nbinom, file = 'orl_4096_0415_2025_rank41_unrotated_lapl.RData')
+save(result_nbinom, file = 'orl_4096_0415_2025_rank7_unrotated_lapl.RData')
+
+
+# save(result_nbinom, file = 'orl_4096_0408_2025_lapl_step2.RData')
 
 
 # result_nbinom = batch_opti(dmf_nbinom$L, batch_size, step_size, X, factor_family = factor_family1, q,
