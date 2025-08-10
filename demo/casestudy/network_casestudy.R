@@ -210,37 +210,37 @@ g4 <- graph_from_adjacency_matrix(A4, mode='undirected')
 g5 <- graph_from_adjacency_matrix(A5, mode='undirected')
 
 
-# png("/Users/caesa/Desktop/BU PhD/Dissertation/CaseStudy/figures/sparsity_network.png",
-#     units="in", width=12, height=4, res=300)
-par(mfrow=c(1,5), mar=c(5,1,5,1))
-plot(g1, layout=layout.sphere, main="work")
-plot(g2, layout=layout.sphere, main="coauthor")
-plot(g3, layout=layout.sphere, main="lunch")
-plot(g4, layout=layout.sphere, main="facebook")
-plot(g5, layout=layout.sphere, main="leisure")
-# dev.off()
 
 
-image.real <- function(mat, main_name = 'NA') {
-  mat <- t(mat)[,nrow(mat):1]
-  #image.plot(mat, axes = FALSE, main = main_name, xaxt= "n", yaxt= "n")
-  image(mat, axes = FALSE, main = main_name,  col = c("white", "black"), cex = 10)
-  axis(1, at = seq(0, 1, length = nrow(mat)), labels = rownames(mat),
-       tick = FALSE, las = 2)
-  axis(2, at = seq(0, 1, length = ncol(mat)), labels = colnames(mat),
-       tick = FALSE , las = 2)
+image.real <- function(mat, main_name = "NA", cex_main = 1.3) {
+  mat <- t(mat)[, nrow(mat):1]
+  image(mat, axes = FALSE, col = c("white", "black"))
+  axis(1, at = seq(0, 1, length = nrow(mat)), labels = rownames(mat), tick = FALSE, las = 2)
+  axis(2, at = seq(0, 1, length = ncol(mat)), labels = colnames(mat), tick = FALSE, las = 2)
   box()
+  title(main = main_name, cex.main = cex_main)   # <-- bigger titles here
 }
 
 
-#png("/projectnb/dmfgrp/efm/figures/sparsity_network2.png",
- #   units="in", width=15, height=4, res=300)
-par(mfrow=c(1,5), mar=c(5,3,5,0.5))
-image.real(as_adjacency_matrix(g1, sparse = FALSE), main_name = TeX('\\textbf{$A^{(1)}$-work}'))
-image.real(as_adjacency_matrix(g2, sparse = FALSE), main_name = TeX('\\textbf{$A^{(2)}$-coauthor}'))
-image.real(as_adjacency_matrix(g3, sparse = FALSE), main_name = TeX('\\textbf{$A^{(3)}$-lunch}'))
-image.real(as_adjacency_matrix(g4, sparse = FALSE), main_name = TeX('\\textbf{$A^{(4)}$-facebook}'))
-image.real(as_adjacency_matrix(g5, sparse = FALSE), main_name = TeX('$\\textbf{A^{(5)}$-leisure}'))
-#dev.off()
+
+png("/projectnb/dmfgrp/efm/figures/sparsity_network2.png",
+  units="in", width=15, height=4, res=300)
+
+# Use plotmath instead of TeX
+title_expr <- function(k, label) bquote(bold(A^{.(k)}) ~ "--" ~ .(label))
+TITLE_SIZE <- 2  # tweak to match manuscript font
+par(mfrow = c(1,5), mar = c(5,3,5,0.5))
+image.real(as_adjacency_matrix(g1, sparse = FALSE),
+           main_name = title_expr(1, "Work"),      cex_main = TITLE_SIZE)
+image.real(as_adjacency_matrix(g2, sparse = FALSE),
+           main_name = title_expr(2, "Coauthor"),  cex_main = TITLE_SIZE)
+image.real(as_adjacency_matrix(g3, sparse = FALSE),
+           main_name = title_expr(3, "Lunch"),     cex_main = TITLE_SIZE)
+image.real(as_adjacency_matrix(g4, sparse = FALSE),
+           main_name = title_expr(4, "Facebook"),  cex_main = TITLE_SIZE)
+image.real(as_adjacency_matrix(g5, sparse = FALSE),
+           main_name = title_expr(5, "Leisure"),   cex_main = TITLE_SIZE)
+dev.off()
+
 
 
