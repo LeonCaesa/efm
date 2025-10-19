@@ -25,13 +25,10 @@ if (length(argv) > 0){
   d <- as.numeric( argv[3] )
   q <- as.numeric( argv[4] )
 }
-# family_idx = 2; algo_idx = 1; d = 512; q = 50
-# Print the values
-paste("family index:", family_idx)
-#paste("sample_idx:", sample_idx)
-paste("algo_idx:", algo_idx)
-paste("d:", d)
-paste("q:", q)
+# Print the parameter values
+cat("Family index:", family_idx, "\n")
+cat("Algorithm index:", algo_idx, "\n") 
+cat("Dimensions: d =", d, ", q =", q, "\n")
 
 
 # [experiment specific]
@@ -60,15 +57,11 @@ if (family_idx == 2){
 }else{
   factor_weights <- 1
 }
-# factor_weights <- 1
-
-
 L_prior <- list(mean = rep(0, q),
                 precision =  rep(1,q))
 
 V_prior <- list(mean = rep(0, q),
                 sigma = rep(0.3, q))
-                #sigma = rep(1, q))
 center_star <- rep(2, d)
 dispersion_star <- dispersion_list[family_idx]
 
@@ -87,12 +80,7 @@ adam_control <- list(max_epoch = 25, batch_size = 128,
 
 em_control <- list(maxit = 25 * 3)
 
-# init <- list(center = truth$center + rnorm(d, 0, 1),
-#              dispersion = 1,
-#              Vt = truth$V0 + matrix(rnorm(q*d, 0, 1), nrow = d)
-#              )
-# init <- NULL
-
+# Initialize parameters using family-specific approach
 init_family <- function(x, weights, q, factor_family, sd_noise = 1){
       n = dim(x)[1]; d = dim(x)[2]
       mu <- family_initialize(x, weights, factor_family)
@@ -133,22 +121,21 @@ if (algo_idx<=2){
                      '.RData', sep ='')
 
 
-      #if (!file.exists(save_name)){
-        start = Sys.time()
-        efm_result <- efm(x = truth$X/factor_weights, lambda_prior = L_prior,
-                          factor_family = factor_family,
-                          rank = q, weights = factor_weights,
-                          algo = algo_list[algo_idx],
-                          start = init,
-                          sample_control = sample_control,
-                          adam_control = adam_control,
-                          em_control = em_control,
-                          eval_likeli = TRUE)
-        end = Sys.time()
-        efm_time = as.numeric(difftime(end, start, units = 's')) - efm_result$eval_time
-        efm_result$efm_time = efm_time
-        save(efm_result, file = save_name)
-      #  }
+      start = Sys.time()
+      efm_result <- efm(x = truth$X/factor_weights, lambda_prior = L_prior,
+                        factor_family = factor_family,
+                        rank = q, weights = factor_weights,
+                        algo = algo_list[algo_idx],
+                        start = init,
+                        sample_control = sample_control,
+                        adam_control = adam_control,
+                        em_control = em_control,
+                        eval_likeli = TRUE)
+      end = Sys.time()
+      efm_time = as.numeric(difftime(end, start, units = 's')) - efm_result$eval_time
+      efm_result$efm_time = efm_time
+      save(efm_result, file = save_name)
+      cat("Saved results for sample size", sample_list[sample_idx], "\n")
   }# end of sample idx
 
 }else{
@@ -162,20 +149,19 @@ if (algo_idx<=2){
             paste('q', q, sep = ''),
             paste('T', adam_control$max_epoch, sep= ''), sep = '_'),
      '.RData', sep ='')
-  #if (!file.exists(save_name)){
-    start = Sys.time()
-    efm_result <- efm(x = truth$X/factor_weights, lambda_prior = L_prior,
-                      factor_family = factor_family,
-                      rank = q, weights = factor_weights,
-                      algo = algo_list[algo_idx],
-                      start = init,
-                      sample_control = sample_control,
-                      adam_control = adam_control,
-                      em_control = em_control,
-                      eval_likeli = TRUE)
-    end = Sys.time()
-    efm_time = as.numeric(difftime(end, start, units = 's')) - efm_result$eval_time
-    efm_result$efm_time = efm_time
-    save(efm_result, file = save_name)
-    #}
+  start = Sys.time()
+  efm_result <- efm(x = truth$X/factor_weights, lambda_prior = L_prior,
+                    factor_family = factor_family,
+                    rank = q, weights = factor_weights,
+                    algo = algo_list[algo_idx],
+                    start = init,
+                    sample_control = sample_control,
+                    adam_control = adam_control,
+                    em_control = em_control,
+                    eval_likeli = TRUE)
+  end = Sys.time()
+  efm_time = as.numeric(difftime(end, start, units = 's')) - efm_result$eval_time
+  efm_result$efm_time = efm_time
+  save(efm_result, file = save_name)
+  cat("Results saved to:", save_name, "\n")
 }

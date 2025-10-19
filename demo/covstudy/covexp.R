@@ -4,6 +4,7 @@
 # across different exponential families.
 #
 # Usage: Rscript covexp.R [exp_idx] [n_repeats] [d]
+# Batch execution: bash submit_cov.sh (for cluster computing)
 # Prerequisites: Run ../../install_dependencies.R first
 
 # Load EFM package and dependencies

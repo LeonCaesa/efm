@@ -1,80 +1,33 @@
-setwd(dirname(rstudioapi::getSourceEditorContext()$path))
-if (!require("multinet")) install(multinet)
-if (!require("tidyverse")) install(tidyverse)
-if (!require("plotly")) install(plotly)
-if (!require("mvtnorm")) install(mvtnorm)
-if (!require("matrixStats")) install(matrixStats)
+# EFM Multiplex Network Analysis (Paper Section 4.4)
+#
+# This script demonstrates EFM application to multiplex network data
+# using the AUCS dataset for social network analysis.
+#
+# Prerequisites: Run ../../install_dependencies.R first
+
+# Load EFM package
+devtools::load_all("../..")
+
+# Load required packages
+if (!require("multinet")) install.packages("multinet")
+if (!require("plotly")) install.packages("plotly")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("stringr")) install.packages("stringr")
+if (!require("igraph")) install.packages("igraph")
+
+# Source utility functions
+if (file.exists("utilities.R")) {
+  source("utilities.R")
+}
 
 
-if (!exists("foo", mode="function")) source("util_casestudy.R")
-if (!exists("foo", mode="function")) source('../../R/utils.R')
-if (!exists("foo", mode="function")) source('../../R/efm.R')
 
 
-
-
+# Load AUCS multiplex network dataset
 net <- ml_aucs()
 
-get_layeradj <- function(layerA, total_ids){
-  n_actors = length(total_ids)
-  A = matrix(0, nrow = n_actors, ncol = n_actors)
-  layer_names = rownames(layerA)
-
-
-  nonzeros_idx = which(as.matrix(layerA)!=0, arr.ind = TRUE)
-  n_ = dim(nonzeros_idx)[1]
-
-  for(i in 1:n_){
-
-    from_idx = c(nonzeros_idx[i,][1])
-    to_idx = c(nonzeros_idx[i,][2])
-
-    A_fromidx = which(total_ids ==layer_names[from_idx])
-    A_toidx = which(total_ids ==layer_names[to_idx])
-    A[A_fromidx, A_toidx] = layerA[from_idx, to_idx]
-
-
-  }
-  return(A)
-}
-
-
-get_totaladj <- function(network, actor_list){
-  A_totl = get.adjacency(as.igraph(network))
-  str_order = str_sort(rownames(A_totl), numeric = TRUE)
-  A_totl = A_totl[str_order, str_order]
-
-  node_ids = rownames(A_totl)
-  A_list = c()
-
-  layer_namelist = layers_ml(network)
-  n_layers = length(layer_namelist)
-
-  for(layer_idx in 1:n_layers){
-    layer_name = layer_namelist[layer_idx]
-    network_layer = as.igraph(network, layers = layer_name)
-    A_layer = get.adjacency(network_layer)
-    A_list[[layer_idx]] = get_layeradj(A_layer, node_ids)
-  }
-  return(A_list)
-}
-
-get_totalweights <- function(A_list, diag0 = TRUE, multiplier = 1){
-  n_actor = dim(A_list[[1]])
-  n_layer = length(A_list)
-  weight_matrix = matrix(0, nrow = n_actor, ncol = n_actor)
-  for(i in 1:n_layer){
-    A_eigen = eigen(A_list[[i]])
-    weight_matrix = weight_matrix + 1/ Re(A_eigen$values[1]) * A_list[[i]]
-  }
-  weight_matrix[weight_matrix!=0] = weight_matrix[weight_matrix!=0]/ min(weight_matrix[weight_matrix!=0]) * multiplier
-  weight_matrix[weight_matrix ==0] = min(weight_matrix[weight_matrix!=0])
-  if (diag0){diag(weight_matrix) = 0}
-
-  return(weight_matrix)
-}
-
-# # [get aggregated adj matrix]
+# Process aggregated adjacency matrix
 network_totl =  as.igraph(net)
 A_totl = get.adjacency(network_totl)
 str_order = str_sort(rownames(A_totl), numeric = TRUE) # the nodes needs to be ordered to match with the labels
@@ -130,11 +83,7 @@ efm_fit = efm(A_dmf, factor_family = glm_family, rank = rank_, weights = glm_wei
               algo = 'lapl', start = start, adam_control = adam_control, lambda_prior = L_prior,
               sample_control = sample_control, eval_likeli = TRUE)
 
-
-
-#save(efm_fit, file = '/projectnb/dmfgrp/Laplacian_EFM/Result/CVFit/EFM_AUCS1000Epoch.RData')
-#load('/projectnb/dmfgrp/Laplacian_EFM/Result/CVFit/EFM_AUCS200Epoch.RData')
-#plot(efm_fit$like_list)
+cat("EFM fitting completed. Final loss:", tail(efm_fit$like_list, 1), "\n")
 
 PCs_WDMF= efm_identify(efm_fit$V)
 PCs = PCs_WDMF
@@ -212,23 +161,19 @@ g5 <- graph_from_adjacency_matrix(A5, mode='undirected')
 
 
 
-image.real <- function(mat, main_name = "NA", cex_main = 1.3) {
-  mat <- t(mat)[, nrow(mat):1]
-  image(mat, axes = FALSE, col = c("white", "black"))
-  axis(1, at = seq(0, 1, length = nrow(mat)), labels = rownames(mat), tick = FALSE, las = 2)
-  axis(2, at = seq(0, 1, length = ncol(mat)), labels = colnames(mat), tick = FALSE, las = 2)
-  box()
-  title(main = main_name, cex.main = cex_main)   # <-- bigger titles here
+# Create results directory
+results_dir <- "results"
+if (!dir.exists(results_dir)) {
+  dir.create(results_dir, showWarnings = FALSE)
 }
 
+# Create network sparsity visualization
+png(file.path(results_dir, "sparsity_network.png"),
+    units="in", width=15, height=4, res=300)
 
-
-png("/projectnb/dmfgrp/efm/figures/sparsity_network2.png",
-  units="in", width=15, height=4, res=300)
-
-# Use plotmath instead of TeX
+# Use plotmath for mathematical expressions
 title_expr <- function(k, label) bquote(bold(A^{.(k)}) ~ "--" ~ .(label))
-TITLE_SIZE <- 2  # tweak to match manuscript font
+TITLE_SIZE <- 2
 par(mfrow = c(1,5), mar = c(5,3,5,0.5))
 image.real(as_adjacency_matrix(g1, sparse = FALSE),
            main_name = title_expr(1, "Work"),      cex_main = TITLE_SIZE)
@@ -242,5 +187,4 @@ image.real(as_adjacency_matrix(g5, sparse = FALSE),
            main_name = title_expr(5, "Leisure"),   cex_main = TITLE_SIZE)
 dev.off()
 
-
-
+cat("Network sparsity plot saved to:", file.path(results_dir, "sparsity_network.png"), "\n")

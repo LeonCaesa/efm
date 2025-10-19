@@ -21,8 +21,8 @@ if (!require("dmf")) {
 }
 
 # Source utility functions if they exist
-if (file.exists("util_casestudy.R")) {
-  source("util_casestudy.R")
+if (file.exists("utilities.R")) {
+  source("utilities.R")
 }
 
 
@@ -31,13 +31,6 @@ X<- readMat('data/ORL_64x64.mat')$fea
 label = readMat('data/ORL_64x64.mat')$gnd
 # X<- readMat('data/ORL_32x32.mat')$fea
 # label = readMat('data/ORL_32x32.mat')$gnd
-
-# [for Fasion Mnist] # first 60,000 instances are the training set
-# fashion <- download_fashion_mnist()
-# X <- as.matrix(fashion[1:2000, -c(785,786)])
-# label = fashion[1:2000, 786]
-
-
 
 
 n = dim(X)[1]
@@ -63,35 +56,8 @@ factor_family1 = negative.binomial(phi_star)
 # q = 3
 q = 7
 # q = 41
-#batch_size = 128
 batch_size = 256
 sample_size = 300
-
-
-# dmf_nbinom = dmf(X, factor_family1, q)
-# Vt_nbinom = dmf_nbinom$V; Lt_nbinom = dmf_nbinom$L
-# (x,
-#   factor_family,
-#   rank,
-#   weights = 1,
-#   algo = 'lapl',
-#   start = NULL,
-#   lambda_prior = list(mean = rep(0, q),
-#                       precision = rep(1, q)),
-#   adam_control = adam.control(
-#     max_epoch = 5,
-#     batch_size = 32,
-#     step_size = 0.1,
-#     rho = 0,
-#     abs_tol = 1e-6,
-#     beta1 = 0.9,
-#     beta2 = 0.999,
-#     epsilon = 10^-8),
-#   sample_control = sample.control(sample_size = 50, eval_size = 500),
-#   em_control = list(),
-#   ngq = 15,
-#   eval_likeli = FALSE,
-#   identify_ = FALSE)
 
 sample_control = sample.control(sample_size = sample_size, eval_size = 500)
 adam_control = adam.control(
@@ -104,21 +70,6 @@ adam_control = adam.control(
       beta2 = 0.999,
       epsilon = 10^-8)
 
-
-
-
-# load('orl_1024_0303_2025.RData')
-# load('orl_1024_0303_2025_step2.RData')
-# load('orl_4096_0305_2025_lapl_step1.RData')
-# start_point = list(Vt = result_nbinom$V,
-#                    phi = result_nbinom$dispersion,
-#                    center = result_nbinom$center)
-
-
-# start_point =  NULL
-
-# load("/projectnb/dmfgrp/efm/SavedExps/orl_face_dmf.RData")
-# start_point = list(Vt = dmf_result$L[,1:q], phi = 1, center = matrix(0, ncol = d))
 
 svd <- svd(X)
 start_point = list(Vt = svd$v[,1:q], phi = 1, center = matrix(0, ncol = d))
@@ -136,17 +87,6 @@ result_nbinom = efm(X, factor_family = factor_family1, rank = q, weights = 1, st
 
 # save(result_nbinom, file = 'orl_4096_0415_2025_rank41_unrotated_lapl.RData')
 save(result_nbinom, file = 'orl_4096_0415_2025_rank7_unrotated_lapl.RData')
-
-
-# save(result_nbinom, file = 'orl_4096_0408_2025_lapl_step2.RData')
-
-
-# result_nbinom = batch_opti(dmf_nbinom$L, batch_size, step_size, X, factor_family = factor_family1, q,
-#                            max_epoch = 50,sample_size = sample_size,
-#                            beta1 = 0.9, beta2 = 0.999,epislon = 10^-8,
-#                            phi_star = phi_star, rho = 0.5, scale_weights = 1, sample_random = TRUE)
-
-
 plot(result_nbinom$like_list,col = 'blue')
 
 
