@@ -236,8 +236,6 @@ bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
     eta <- drop(mat_mult(x, beta, nvars == 1)) + offset
     mu <- family$linkinv(eta)
     bd <- beta - prior_coef$mean
-    # dev_new <- sum(family$dev.resids(y, mu, weights)) +
-    #   sum(bd * mat_mult(prior_coef$precision, bd)) * dispersion  # FIXME: check
     dev_new <- sum(family$dev.resids(y, mu, weights) / dispersion) +
       sum(bd * mat_mult(prior_coef$precision, bd))
     if (control$trace) message("<", it, "> dev = ", dev_new)

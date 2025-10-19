@@ -1,10 +1,16 @@
-setwd(dirname(rstudioapi::getSourceEditorContext()$path))
-if (!exists("foo", mode="function")) source("../../R/efm.R")
-if (!exists("foo", mode="function")) source("../../R/utils.R")
+# EFM Optimization Efficiency Study (Paper Section 4.1)
+#
+# This script demonstrates the optimization efficiency of different algorithms
+# for exponential factor models across various families and sample sizes.
+#
+# Usage: Rscript optiexp.R [family_idx] [algo_idx] [d] [q]
+# Prerequisites: Run ../../install_dependencies.R first
 
-if (!require("mvtnorm")) install(mvtnorm)
-if (!require("matrixStats")) install(matrixStats)
-if (!require("MASS")) install(MASS)
+# Load EFM package and dependencies
+devtools::load_all("../..")
+library(matrixStats)
+library(MASS)
+library(gaussquadr)
 
 
 
@@ -105,7 +111,11 @@ init <- init_family(truth$X/truth$weights, truth$weights, q, factor_family, sd_n
 
 
 
-load_dir = '/projectnb/dmfgrp/efm/OptiResult0118_2025/'
+# Create local results directory
+results_dir <- "results"
+if (!dir.exists(results_dir)) {
+  dir.create(results_dir, showWarnings = FALSE)
+}
 
 
 if (algo_idx<=2){
@@ -115,7 +125,7 @@ if (algo_idx<=2){
                              eval_size = 1500)
 
 
-      save_name <- paste(load_dir, paste( algo_list[algo_idx],
+      save_name <- file.path(results_dir, paste( algo_list[algo_idx],
                        name_list[family_idx], paste('s', sample_control$sample_size, sep =''),
                             paste('d', d, sep = ''),
                             paste('q', q, sep = ''),
@@ -146,7 +156,7 @@ if (algo_idx<=2){
   sample_control <- list(sample_size = sample_list[sample_idx],
                          eval_size = 1500)
 
-  save_name <- paste(load_dir, paste( algo_list[algo_idx],
+  save_name <- file.path(results_dir, paste( algo_list[algo_idx],
             name_list[family_idx], paste('s', sample_control$sample_size, sep =''),
             paste('d', d, sep = ''),
             paste('q', q, sep = ''),
@@ -169,4 +179,3 @@ if (algo_idx<=2){
     save(efm_result, file = save_name)
     #}
 }
-

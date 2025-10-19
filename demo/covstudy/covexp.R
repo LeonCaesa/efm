@@ -1,9 +1,16 @@
-setwd(dirname(rstudioapi::getSourceEditorContext()$path))
-if (!require("mvtnorm")) install(mvtnorm)
-if (!require("matrixStats")) install(matrixStats)
-if (!require("MASS")) install(MASS)
+# EFM Covariance Modeling Study (Paper Section 4.2)
+#
+# This script demonstrates covariance modeling and simulation using EFM
+# across different exponential families.
+#
+# Usage: Rscript covexp.R [exp_idx] [n_repeats] [d]
+# Prerequisites: Run ../../install_dependencies.R first
 
-if (!exists("foo", mode="function")) source("../../R/efm.R")
+# Load EFM package and dependencies
+devtools::load_all("../..")
+library(matrixStats)
+library(MASS)
+library(gaussquadr)
 
 
 
@@ -17,7 +24,7 @@ V_prior <- list(mean = c(0.78282, 0.51803, 0.41003),
                 sigma = matrix( c(c(0.029145, 0.023873, 0.010184),
                                   c(0.023873, 0.053951, -0.006967),
                                   c(0.010184, -0.006967, 0.086856)), nrow = 3))
-phi_prior<-list(alpah = 4.0713, beta= 0.1623)
+phi_prior <- list(alpha = 4.0713, beta = 0.1623)
 
 # [Optimization configuration]
 n_gq <- 15
@@ -60,31 +67,32 @@ switch(exp_idx,
 )
 
 
-#save_dir = paste('/projectnb/dmfgrp/efm/CovResult1209/', factor_family$family, '/', sep = '')
-#dir.create(file.path(save_dir), showWarnings = FALSE)
 
 
+
+
+# Create local results directory
+results_dir <- file.path("results", factor_family$family)
+if (!dir.exists(results_dir)) {
+  dir.create(results_dir, recursive = TRUE, showWarnings = FALSE)
+}
 
 # [main script below]
 center_star <- rep(0, d)
 if (check_DispersionUpdate(factor_family)){
-  dispersion_star <- rgamma(d, shape = phi_prior$alpah, scale =phi_prior$beta)^2 + 1}
+  dispersion_star <- rgamma(d, shape = phi_prior$alpha, scale = phi_prior$beta)^2 + 1}
 
 truth <- generate_cov(n, d, L_prior, V_prior, center_star, family = factor_family,
                       weights = factor_weights, phi = dispersion_star)
 
-save_name <- paste(paste(save_dir, 'truth', d, n_repeats, sep = '_'), '.RData', sep = '')
+# Save truth data
+save_name <- file.path(results_dir, paste('truth', d, n_repeats, sep = '_', '.RData'))
 save(truth, file = save_name)
 
-
-# [initialize script]
+# [Run EM algorithm]
 init <- NULL
-# init <- list(center = truth$center + rnorm(d, 0, 1),
-#              dispersion = rnorm(d, 0, truth$phi/3),
-#              Vt = svd(truth$X, nu = q, nv = q)$v)
-# save_name <- paste(paste(save_dir, 'init', d, n, sep = '_'), '.RData', sep = '')
-# save(init, file = save_name)
 
+cat("Running EM algorithm for", factor_family$family, "family...\n")
 time_fagqem <- system.time(
   efm_fagqem <- fa_gqem(X = truth$X/factor_weights, q, n_gq, weights = factor_weights,
                         family = factor_family, lambda_prior= L_prior,
@@ -92,22 +100,10 @@ time_fagqem <- system.time(
                         eval_size = sample_control$eval_size)
 )
 efm_fagqem$exe_time <- time_fagqem[3]
-save_name <- paste(paste(save_dir, 'fageqm', d, n_repeats, sep = '_'), '.RData', sep = '')
+
+# Save EM results
+save_name <- file.path(results_dir, paste('fagqem', d, n_repeats, sep = '_', '.RData'))
 save(efm_fagqem, file = save_name)
 
-
-# names_algo <- c('lapl', 'sml', 'ps')
-#
-# for (algo_ in names_algo){
-#   print(c(d, algo_))
-#   time_efm<- system.time(efm_result <- efm(truth$X/factor_weights, factor_family,
-#                                            rank = q, weights = factor_weights,
-#                                            start = init, algo = algo_,  adam_control = adam_control,
-#                                            sample_control = sample_control, eval_likeli = TRUE,
-#                                            lambda_prior = L_prior))
-#
-#   efm_result$exe_time <- time_efm[3]
-#
-#   save_name <- paste(paste(save_dir, 'efm', algo_, d, n_repeats, sep = '_'), '.RData', sep = '')
-#   save(efm_result, file = save_name)
-# } # end of algo loop
+cat("Results saved to:", save_name, "\n")
+cat("Execution time:", efm_fagqem$exe_time, "seconds\n")
