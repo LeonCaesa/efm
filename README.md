@@ -1,4 +1,6 @@
-# Computational Approaches for Exponential-Family Factor Analysis {https://arxiv.org/abs/2403.14925}
+# Computational Approaches for Exponential-Family Factor Analysis
+
+**Paper**: https://arxiv.org/abs/2403.14925
 
 ## R package installation guide
 
@@ -46,18 +48,18 @@ Each demo subfolder contains its own README with specific instructions.
 
 ```
 efm/
-├── example.R                    # Main demo (NO tidyverse, all algorithms)
-├── install_dependencies.R      # One-command setup for reviewers
-├── README.md                   # Emphasizes minimal dependencies
+├── example.R                    # Comprehensive demonstration of all EFM algorithms
+├── install_dependencies.R      # Automated dependency installation
+├── README.md                   # Package overview and usage guide
 ├── R/
-│   ├── efm.R                   # Core package (enhanced docs, reduced deps)
-│   └── utils.R                 # Utilities (custom rmvnorm, fixed bugs)
+│   ├── efm.R                   # Core EFM implementation
+│   └── utils.R                 # Utility functions and optimizations
 └── demo/                       # Paper experiment reproductions
-    ├── README.md               # Concise high-level overview
-    ├── simustudy/              # Section 4.1 (optimization efficiency)
-    ├── covstudy/               # Section 4.2 (covariance modeling)
-    │   └── submit_cov.sh       # Batch execution script
-    └── casestudy/              # Sections 4.3-4.4 (vision & networks)
-        ├── README.md           # Clear usage instructions
-        └── data/               # ORL face datasets
+    ├── README.md               # Experiment overview and instructions
+    ├── simustudy/              # Section 4.1: Optimization efficiency studies
+    ├── covstudy/               # Section 4.2: Covariance modeling experiments
+    │   └── submit_cov.sh       # Batch execution for large-scale studies
+    └── casestudy/              # Sections 4.3-4.4: Real-world applications
+        ├── README.md           # Case study documentation
+        └── data/               # Datasets for computer vision experiments
 ```
