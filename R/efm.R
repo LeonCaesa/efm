@@ -1,5 +1,5 @@
 # [ Exponential Factor Model ]
-#' @importFrom MASS ginv rnegbin
+#' @importFrom MASS ginv
 #' @importFrom stats coef dbinom dgamma dnbinom dnorm dpois gaussian rgamma rnorm rpois var rbinom
 #' @importFrom matrixStats logSumExp rowLogSumExps
 NULL
@@ -49,7 +49,7 @@ generate_data <-
       quasipoisson = rqpoisson(y_len, mu, dispersion),
       binomial = rbinom(y_len, weights, mu),
       Gamma = rgamma(y_len , shape =  1/dispersion, scale = mu * dispersion), # V(x) = dispersion * mean(x)^2
-      negative.binomial = rnegbin(y_len, mu = mu, theta = dispersion),
+      negative.binomial = rnbinom(y_len, size = dispersion, mu = mu),
       stop("family `", family$family, "` not recognized")
     )
     dim(y) <- dim(eta)
@@ -385,22 +385,86 @@ fa_gqem <- function (X, q, ngq, family = gaussian(), weights,
 }
 
 # NOTE: weight[i, j] == 0 means "don't use (i,j)"; is.na(x[i, j]) means "missing, estimate it"
-#' Perform exponential factor model estimation.
+#' Exponential Factor Model Estimation
 #'
-#' @param x Data to conduct factor inference
-#' @param factor_family Family object to specify factor loss (see \code{family})
-#' @param rank Rank of factor model.
-#' @param weights Entry-wise weight.
-#' @param algo Optimization algorithm to be chosen from 1). sml (simulated maximum likelihood) 2). ps (posterior sampling) 3). lapl (laplacian approxmation).
-#' @param start Initialization point, a list containing V, Phi and center
-#' @param lambda_prior Prior on Lambda, a list containing mean and precision
-#' @param adam_control Adam optimization control parameters, (see \code{adam.control}).
-#' @param sample_control EFM sampling control parameters, (see \code{sample.control})
-#' @param em_control Same to glm.control, used for fa_gqem, (see \code{glm.control})
-#' @param ngq Number of nodes used in gaussian quadrature
-#' @param eval_likeli boolen, set to false to skip marginal likelihood evaluation
-#' @param identify_ boolen, set to true to enable identifiability at every iteration
-#' @return Estimation of projection matrix `V`.
+#' Fits an exponential factor model to data using various optimization algorithms.
+#' This extends traditional factor analysis to handle non-Gaussian data from 
+#' exponential family distributions (Poisson, binomial, gamma, etc.).
+#'
+#' @param x Numeric data matrix (n x p) where rows are observations and columns are variables
+#' @param factor_family Family object specifying the exponential family distribution.
+#'   Use \code{gaussian()}, \code{poisson()}, \code{binomial()}, etc. See \code{\link{family}}
+#' @param rank Integer specifying the number of latent factors (must be < min(n,p))
+#' @param weights Numeric weights for observations. Can be:
+#'   \itemize{
+#'     \item Single value (applied to all entries)
+#'     \item Vector of length n (row weights) or p (column weights)  
+#'     \item Matrix of same dimensions as x (entry-wise weights)
+#'   }
+#' @param algo Character string specifying optimization algorithm:
+#'   \itemize{
+#'     \item \code{"lapl"}: Laplacian approximation (default, fastest)
+#'     \item \code{"sml"}: Simulated maximum likelihood
+#'     \item \code{"ps"}: Posterior sampling
+#'     \item \code{"em"}: EM algorithm with Gaussian quadrature
+#'   }
+#' @param start Optional list with initialization values containing:
+#'   \itemize{
+#'     \item \code{Vt}: Initial projection matrix (p x rank)
+#'     \item \code{center}: Initial intercept vector (length p)
+#'     \item \code{dispersion}: Initial dispersion parameters
+#'   }
+#' @param lambda_prior List specifying prior on latent factors:
+#'   \itemize{
+#'     \item \code{mean}: Prior mean vector (default: zeros)
+#'     \item \code{precision}: Prior precision vector (default: ones)
+#'   }
+#' @param adam_control List of Adam optimizer parameters. See \code{\link{adam.control}}
+#' @param sample_control List of Monte Carlo sampling parameters. See \code{\link{sample.control}}
+#' @param em_control List of EM algorithm parameters (same as \code{\link{glm.control}})
+#' @param ngq Integer number of Gaussian quadrature nodes for EM algorithm (default: 15)
+#' @param eval_likeli Logical; if TRUE, evaluate marginal likelihood during optimization (slower)
+#' @param identify_ Logical; if TRUE, apply identifiability constraints at each iteration
+#'
+#' @return List containing:
+#'   \itemize{
+#'     \item \code{V}: Estimated projection matrix (p x rank)
+#'     \item \code{center}: Estimated intercept parameters
+#'     \item \code{dispersion}: Estimated dispersion parameters
+#'     \item \code{family}: Family object used
+#'     \item \code{like_list}: Likelihood values during optimization (if eval_likeli=TRUE)
+#'     \item \code{algo}: Algorithm used
+#'   }
+#'
+#' @details
+#' The exponential factor model assumes:
+#' \deqn{X_{ij} | \lambda_i \sim \text{ExpFamily}(\mu_{ij})}
+#' \deqn{\text{link}(\mu_{ij}) = \alpha_j + V_j^T \lambda_i}
+#' \deqn{\lambda_i \sim N(0, I)}
+#' 
+#' where \code{V} is the p x rank loading matrix and \code{lambda} are the latent factors.
+#'
+#' @references
+#' Carvalho, L. and Wang, L. (2024). Computational Approaches for Exponential-Family 
+#' Factor Analysis. arXiv:2403.14925.
+#'
+#' @examples
+#' # Generate Poisson count data
+#' set.seed(123)
+#' n <- 100; p <- 20; k <- 3
+#' 
+#' # True parameters
+#' V_true <- matrix(rnorm(p * k), p, k)
+#' L_true <- matrix(rnorm(n * k), n, k)
+#' mu <- exp(tcrossprod(L_true, V_true) + 1)
+#' X <- matrix(rpois(n * p, mu), n, p)
+#' 
+#' # Fit exponential factor model
+#' fit <- efm(X, factor_family = poisson(), rank = k, algo = "lapl")
+#' 
+#' # View results
+#' print(fit$V[1:5, ])  # First 5 rows of loading matrix
+#' 
 #' @export
 efm <- function(x,
                 factor_family,
@@ -586,5 +650,3 @@ efm <- function(x,
   ))
 
 } # end of function
-
-

@@ -2,6 +2,58 @@ norm2 <- function (x) norm(as.matrix(x[!is.na(x)]), "2")
 normalize <- function (x, margin = 2)
   sweep(x, margin, apply(x, margin, norm2), `/`)
 
+#' Custom multivariate normal sampler
+#'
+#' Generates random samples from multivariate normal distribution.
+#' This replaces mvtnorm::rmvnorm() to reduce dependencies.
+#'
+#' @param n Number of samples to generate
+#' @param mean Mean vector (default: zeros)
+#' @param sigma Covariance matrix (default: identity)
+#' @param checkSymmetry Logical; ignored for compatibility
+#' @return Matrix of samples (n x p)
+#' @keywords internal
+rmvnorm <- function(n, mean = rep(0, ncol(sigma)), sigma = diag(length(mean)), 
+                    checkSymmetry = FALSE) {
+  p <- length(mean)
+  if (n == 0) return(matrix(numeric(0), 0, p))
+  
+  # Handle edge cases
+  if (n < 0) stop("n must be non-negative")
+  if (length(mean) != nrow(sigma) || nrow(sigma) != ncol(sigma)) {
+    stop("Dimensions of mean and sigma are incompatible")
+  }
+  
+  # Check for positive definiteness and compute Cholesky decomposition
+  chol_sigma <- tryCatch({
+    chol(sigma)
+  }, error = function(e) {
+    # If Cholesky fails, try eigendecomposition
+    eigen_sigma <- eigen(sigma, symmetric = TRUE)
+    if (any(eigen_sigma$values < -sqrt(.Machine$double.eps))) {
+      stop("sigma is not positive semi-definite")
+    }
+    # Use eigendecomposition: sigma = V * D * V'
+    # Generate as V * sqrt(D) * Z where Z ~ N(0, I)
+    sqrt_vals <- sqrt(pmax(eigen_sigma$values, 0))
+    return(t(eigen_sigma$vectors %*% diag(sqrt_vals)))
+  })
+  
+  # Generate standard normal samples
+  z <- matrix(rnorm(n * p), n, p)
+  
+  # Transform to multivariate normal
+  if (is.matrix(chol_sigma)) {
+    # Standard Cholesky case
+    samples <- z %*% chol_sigma + matrix(mean, n, p, byrow = TRUE)
+  } else {
+    # Eigendecomposition case (chol_sigma is actually the transformation matrix)
+    samples <- z %*% chol_sigma + matrix(mean, n, p, byrow = TRUE)
+  }
+  
+  return(samples)
+}
+
 mat_mult <- function (A, b, mult_cond = is.vector(A))
   if (mult_cond) A * b else A %*% b
 
@@ -179,14 +231,15 @@ bsglm <- function (x, y, prior_coef, weights = NULL, offset = NULL,
     z <- crossprod(x, W * (eta - offset) + residuals) + beta0
     H <- mat_add(prior_coef$precision, crossprod(x, sweep(x, 1, W, '*'))) # Hessian
     eh <- symm_eigen(H)
-    #beta <- gsym_solve_bsglm(eh, z)
     beta <- gsym_solve(eh, z)
 
     eta <- drop(mat_mult(x, beta, nvars == 1)) + offset
     mu <- family$linkinv(eta)
     bd <- beta - prior_coef$mean
-    dev_new <- sum(family$dev.resids(y, mu, weights)) +
-      sum(bd * mat_mult(prior_coef$precision, bd)) * dispersion  # FIXME: check
+    # dev_new <- sum(family$dev.resids(y, mu, weights)) +
+    #   sum(bd * mat_mult(prior_coef$precision, bd)) * dispersion  # FIXME: check
+    dev_new <- sum(family$dev.resids(y, mu, weights) / dispersion) +
+      sum(bd * mat_mult(prior_coef$precision, bd))
     if (control$trace) message("<", it, "> dev = ", dev_new)
     if (it > 1 && abs((dev_new - dev) / (dev + .1)) < control$epsilon) break
     dev <- dev_new
@@ -257,9 +310,9 @@ SML_grad <- function(Vt, factor_family, X, q, center,
   grad_simu_center <- array(dim = c(n, d, sample_size))
   grad_simu_dispersion <- matrix(nrow = sample_size, ncol = d)
   for (b in 1:sample_size){
-    L_sample <- mvtnorm::rmvnorm(n, mean = lambda_prior$mean,
-                                 sigma = diag(1/lambda_prior$precision),
-                                 checkSymmetry = TRUE)
+    L_sample <- rmvnorm(n, mean = lambda_prior$mean,
+                        sigma = diag(1/lambda_prior$precision),
+                        checkSymmetry = TRUE)
     eta_simu <- tcrossprod(L_sample, Vt)
     eta_simu <- sweep(eta_simu, 2, center, '+')
     mu_simu <- factor_family$linkinv(eta_simu)
@@ -452,6 +505,21 @@ efm_identifyLV <- function(L, V){
   list(L = L_, V = V_)
 }
 
+#' Multiple assignment operator
+#'
+#' This operator allows multiple assignment in a single statement, similar to
+#' tuple unpacking in Python. It's used internally for unpacking return values
+#' from functions that return multiple objects.
+#'
+#' @param lhs Left-hand side: a call with variable names to assign to
+#' @param rhs Right-hand side: a list or function call returning multiple values
+#' @return Invisible NULL
+#' @keywords internal
+#' @examples
+#' \dontrun{
+#' # Unpack multiple return values
+#' c(adam_V, Vt_update) := adam_update(adam_V, grad$grad_V, control, lr, t)
+#' }
 ':=' <- function(lhs, rhs) {
   frame <- parent.frame()
   lhs <- as.list(substitute(lhs))
@@ -493,4 +561,3 @@ adam_update <- function(adam_param, grad_, adam_control,
   param_update <-  lr_schedule * vhat_dv / (sqrt(shat_dv) + adam_control$epsilon)
   return(list(adam_param = adam_param, param_update = param_update))
 }
-

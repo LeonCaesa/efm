@@ -1,17 +1,29 @@
-setwd(dirname(rstudioapi::getSourceEditorContext()$path))
-if (!require("devtools")) install(devtools)
-if (!require("MASS")) install(MASS)
-if (!require("R.matlab")) install(R.matlab)
-if (!require("tidyverse")) install(tidyverse)
-if (!require("snedata")) install(snedata)
-if (!require("dmf")) install_github("carvalho-research/dmf")
-if (!require("mvtnorm")) install_github("mvtnorm")
+# Load the efm package (works whether installed or in development)
+if (requireNamespace("efm", quietly = TRUE)) {
+  library(efm)
+} else {
+  # For development: load from source (assuming we're in demo/casestudy/)
+  devtools::load_all("../..")
+}
 
-if (!exists("foo", mode="function")) source("util_casestudy.R")
-devtools::load_all('../../R/utils.R')
-devtools::load_all('../../R/efm.R')
-# if (!exists("foo", mode="function")) source("../../R/efm.R")
-# if (!exists("foo", mode="function")) source("../../R/utils.R")
+# Load required packages
+if (!require("MASS")) install.packages("MASS")
+if (!require("R.matlab")) install.packages("R.matlab")
+if (!require("tidyverse")) install.packages("tidyverse")
+if (!require("mvtnorm")) install.packages("mvtnorm")
+
+# Optional packages
+if (!require("snedata")) {
+  message("Package 'snedata' not available - some functionality may be limited")
+}
+if (!require("dmf")) {
+  message("Package 'dmf' not available - install with: devtools::install_github('carvalho-research/dmf')")
+}
+
+# Source utility functions if they exist
+if (file.exists("util_casestudy.R")) {
+  source("util_casestudy.R")
+}
 
 
 # [for ORL face]
@@ -277,4 +289,3 @@ plot_ly(plot_tsnedf, x=~X1, y=~X2, z=~X3, type="scatter3d", mode="markers", colo
   layout(legend = list(orientation = "h",   # show entries horizontally
                        xanchor = "center",  # use center of legend as anchor
                        x = 0.5), margin = list(t = 0, l = 0, r= 0, b =0))
-
