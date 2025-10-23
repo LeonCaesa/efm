@@ -22,8 +22,15 @@ get_layeradj <- function(layerA, total_ids){
   return(A)
 }
 
-get_totaladj <- function(network, actor_list){
-  A_totl = get.adjacency(as.igraph(network))
+get_totaladj <- function(network, actor_list = NULL){
+  # Handle the igraph compatibility issue by using a more robust approach
+  tryCatch({
+    A_totl = get.adjacency(as.igraph(network))
+  }, error = function(e) {
+    # If as.igraph fails, try alternative approach
+    A_totl = get.adjacency(as.igraph(network, directed = FALSE))
+  })
+  
   str_order = str_sort(rownames(A_totl), numeric = TRUE)
   A_totl = A_totl[str_order, str_order]
   
@@ -35,7 +42,11 @@ get_totaladj <- function(network, actor_list){
   
   for(layer_idx in 1:n_layers){
     layer_name = layer_namelist[layer_idx]
-    network_layer = as.igraph(network, layers = layer_name)
+    tryCatch({
+      network_layer = as.igraph(network, layers = layer_name)
+    }, error = function(e) {
+      network_layer = as.igraph(network, layers = layer_name, directed = FALSE)
+    })
     A_layer = get.adjacency(network_layer)
     A_list[[layer_idx]] = get_layeradj(A_layer, node_ids)
   }

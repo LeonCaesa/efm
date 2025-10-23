@@ -27,8 +27,13 @@ if (file.exists("utilities.R")) {
 # Load AUCS multiplex network dataset
 net <- ml_aucs()
 
-# Process aggregated adjacency matrix
-network_totl =  as.igraph(net)
+# Process aggregated adjacency matrix - handle igraph compatibility
+network_totl <- tryCatch({
+  as.igraph(net)
+}, error = function(e) {
+  # Try with explicit directed parameter
+  as.igraph(net, directed = FALSE)
+})
 A_totl = get.adjacency(network_totl)
 str_order = str_sort(rownames(A_totl), numeric = TRUE) # the nodes needs to be ordered to match with the labels
 A_totl = A_totl[str_order, str_order]
@@ -118,7 +123,12 @@ plot_ly(data = plot_df, x= ~PC1, y =~ PC2, z =~PC3,  opacity= 1,
 library(fields)
 library("latex2exp")
 net <- ml_aucs()
-network_totl <-  as.igraph(net)
+network_totl <- tryCatch({
+  as.igraph(net)
+}, error = function(e) {
+  # Try with explicit directed parameter
+  as.igraph(net, directed = FALSE)
+})
 A_totl <- get.adjacency(network_totl)
 A_totl[A_totl!=0] <- 0
 

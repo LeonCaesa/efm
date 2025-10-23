@@ -13,7 +13,6 @@ The EFM package has **minimal dependencies** and does **NOT require tidyverse**.
 Once you have `devtools` installed, you can install the required packages using the following commands:
 
 ```r
-  devtools::install_github("LeonCaesa/efm", dependencies = TRUE)
   devtools::install_github("carvalho-research/gaussquadr", dependencies = TRUE)
 ```
 
