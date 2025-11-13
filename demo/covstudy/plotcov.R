@@ -14,9 +14,9 @@ if (interactive() && requireNamespace("rstudioapi", quietly = TRUE)) {
 }
 
 # ---- Inputs ----
-file_dir  <- "/projectnb/dmfgrp/efm/CovResult1209/"
+file_dir  <- "results"  # Use local results directory
 file_name <- "total_466_20.RData"
-family_list <- c("binomial", "negbinom(20)", "poisson", "quasipoisson")
+family_list <- c("binomial", "Negative Binomial(20)", "poisson", "quasipoisson")
 
 # ---- Load & Combine (robust typing) ----
 agg_df <- tibble()
@@ -149,5 +149,6 @@ p <- ggplot(plot_df, aes(x = d, y = as.numeric(error))) +
 
 print(p)
 
-ggsave("/projectnb/dmfgrp/efm/figures/cov_error.png", p,
+# Save to local directory instead of hard-coded path
+ggsave("cov_error.png", p,
        width = OUT_WIDTH_IN, height = OUT_HEIGHT_IN, units = "in", dpi = 300)

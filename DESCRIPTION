@@ -2,16 +2,18 @@ Package: efm
 Title: Exponential Factor Model
 Version: 0.1.0
 Authors@R: c(
-    person(given = "Luis",
-           family = "Carvalho",
-           role = c("aut", "cre"),
-           email = "lecarval@math.bu.edu",
-           comment = c(ORCID = "YOUR-ORCID-ID")),
     person(given = "Liang",
            family = "Wang",
-           role = c("aut"),
+           role = c("aut", "cre"),
            email = "leonwang@bu.edu",
-           comment = c(ORCID = "0000-0002-2399-463X")))
+           comment = c(ORCID = "0000-0002-2399-463X")),
+    person(given = "Luis",
+           family = "Carvalho",
+           role = c("aut"),
+           email = "lecarval@math.bu.edu",
+           comment = c(ORCID = "YOUR-ORCID-ID")))
+Author: Liang Wang [aut, cre], Luis Carvalho [aut]
+Maintainer: Liang Wang <leonwang@bu.edu>
 Description: Implements exponential factor models for dimensionality reduction 
     and factor analysis of non-Gaussian data. Extends traditional factor analysis 
     to handle count data, binary data, and other exponential family distributions 
@@ -27,10 +29,7 @@ Imports:
     methods
 Suggests:
     gaussquadr,
-    testthat (>= 3.0.0),
-    knitr,
-    rmarkdown
-VignetteBuilder: knitr
+    testthat (>= 3.0.0)
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.3
 URL: https://github.com/LeonCaesa/efm

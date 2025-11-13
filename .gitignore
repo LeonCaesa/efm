@@ -13,6 +13,7 @@ OptiResult*/
 SavedExps/
 submit_cov.sh.o*
 *.pdf
+Rplots.pdf
 figures/
 results/
 

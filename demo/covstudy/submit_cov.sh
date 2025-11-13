@@ -23,7 +23,7 @@ n_repeats=$SGE_TASK_ID
 
 for (( d=66; d<=500; d+= 50)); do
     echo "Running experiments for:  (exp_idx, repeat_idex, d) = (${exp_idx}, ${n_repeats}, ${d})"
-    R -q --slave --vanilla --args $exp_idx $n_repeats $d < /projectnb/dmfgrp/efm/R/covexp.R
+    R -q --slave --vanilla --args $exp_idx $n_repeats $d < covexp.R
 done
 
 

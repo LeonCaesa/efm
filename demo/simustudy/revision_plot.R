@@ -238,10 +238,10 @@ plot_type3 <- function(dat, n, base_size = 11) {
 # =========================================================
 render_revision_plots <- function(
     # ---- Default paths (edit if needed) ----
-    dir_type1 = "/projectnb/dmfgrp/efm/OptiResult0108/",
-    dir_type2 = "/projectnb/dmfgrp/Laplacian_EFM/Result/LargeP2/",
-    dir_type3 = "/projectnb/dmfgrp/efm/OptiResult0118_2025/",
-    out_dir   = "/projectnb/dmfgrp/efm/figures/",
+    dir_type1 = "results/OptiResult0108/",
+    dir_type2 = "results/LargeP2/",
+    dir_type3 = "results/OptiResult0118_2025/",
+    out_dir   = "figures/",
     which     = c(1, 2, 3),            # any subset of {1,2,3}
     # ---- Type 1 options ----
     d_values_type1 = c(5, 10, 512),

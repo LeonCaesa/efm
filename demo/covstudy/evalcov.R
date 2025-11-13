@@ -28,8 +28,7 @@ metric_cov <- function(esti_cov, actual_cov){
   return(list(l2_frobenius, l1_entropy, l2_normalized))
 }
 
-
-# TODO: check why l2 normalized >1
+# [experiment log]
 # load("/projectnb/dmfgrp/efm/CovResult1209/negbinom(20)/_total_466.RData")
 # actual_cov <- true_cov
 # #esti_cov <- fagqem_esti
@@ -87,15 +86,23 @@ metric_names = c('l2frobenius', 'l2entrophy', 'l2normalized')
 
 
 
-family_list <- c('quasipoisson', 'negbinom(20)', 'poisson', 'binomial')
+family_list <- c('quasipoisson', 'Negative Binomial(20)', 'poisson', 'binomial')
 
 for (family_name in family_list){
 
-    load_dir = paste('/projectnb/dmfgrp/efm/CovResult1209', family_name, '', sep = '/')
+    # Use local results directory instead of hard-coded path
+    load_dir = file.path("results", family_name)
+    
+    # Create directory if it doesn't exist
+    if (!dir.exists(load_dir)) {
+        cat("Warning: Results directory", load_dir, "does not exist.\n")
+        cat("Please run covexp.R first to generate the required data files.\n")
+        next
+    }
 
-
-    factor_family <- switch(family_name, 'quasipoisson' = quasipoisson(),
-                           'negbinom(20)' = negative.binomial(20),
+    factor_family <- switch(family_name, 
+                           'quasipoisson' = quasipoisson(),
+                           'Negative Binomial(20)' = negative.binomial(20),
                            'poisson' = poisson(),
                            'binomial' = binomial())
 
@@ -181,4 +188,3 @@ plot_neglikli = filter(neglikeli_df, !(esti_method %in% c('truth')))
 ggplot(plot_neglikli) + geom_point(aes(x = as.numeric(iter), y = log(neglikeli),
                                        colour = as.factor(esti_method))) +
     facet_wrap(~as.factor(d), scales = "free")
-
